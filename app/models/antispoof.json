@@ -1,0 +1,26 @@
+{
+  "source": "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing",
+  "license": "Apache-2.0",
+  "input": "BGR float32 0..255, NCHW",
+  "classes": [
+    "fake",
+    "real",
+    "fake"
+  ],
+  "models": [
+    {
+      "file": "2.7_80x80_MiniFASNetV2.onnx",
+      "type": "MiniFASNetV2",
+      "scale": 2.7,
+      "width": 80,
+      "height": 80
+    },
+    {
+      "file": "4_0_0_80x80_MiniFASNetV1SE.onnx",
+      "type": "MiniFASNetV1SE",
+      "scale": 4.0,
+      "width": 80,
+      "height": 80
+    }
+  ]
+}

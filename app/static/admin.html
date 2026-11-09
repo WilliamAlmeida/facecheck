@@ -1,0 +1,678 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FaceCheck">
+<title>FaceCheck · Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/theme.js?v=11"></script>
+<link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body class="min-h-dvh flex flex-col">
+
+<main class="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 flex flex-col gap-4">
+
+  <div class="seg self-start" id="tabs">
+    <button data-tab="dash" id="tabDashBtn">Painel</button>
+    <button data-tab="events"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Eventos <span class="count" id="cntEvents">–</span></button>
+    <button data-tab="people"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>Pessoas <span class="count" id="cntPeople">–</span></button>
+  </div>
+
+  <!-- aba painel -->
+  <section id="tab-dash" class="hidden flex-col gap-4">
+    <div class="grid grid-cols-2 lg:grid-cols-4 gap-3" id="kpis">
+      <div class="skeleton h-[106px]"></div><div class="skeleton h-[106px]"></div>
+      <div class="skeleton h-[106px]"></div><div class="skeleton h-[106px]"></div>
+    </div>
+    <div class="grid lg:grid-cols-2 gap-4">
+      <div class="card p-4 sm:p-5 flex flex-col gap-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-bold">Hoje e próximos</h2>
+          <button class="btn btn-ghost btn-sm" data-goto="events">Ver todos</button>
+        </div>
+        <div id="dashEvents" class="flex flex-col gap-2"></div>
+      </div>
+      <div class="card p-4 sm:p-5 flex flex-col gap-3">
+        <div class="flex items-center justify-between gap-2">
+          <h2 class="font-bold">Precisam de fotos</h2>
+          <button class="btn btn-ghost btn-sm" data-goto="people">Ver pessoas</button>
+        </div>
+        <div id="dashPeople" class="flex flex-col gap-2"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- aba eventos -->
+  <section id="tab-events" class="hidden flex-col gap-3">
+    <div class="flex flex-col sm:flex-row gap-2">
+      <div class="search flex-1" id="evSearch"><input id="evQ" class="input" placeholder="Buscar evento" type="search" enterkeyhint="search" autocomplete="off"></div>
+      <div class="flex gap-2">
+        <div class="seg flex-1 sm:flex-none" id="evScope">
+          <button data-scope="upcoming">Próximos</button><button data-scope="past">Anteriores</button><button data-scope="all">Todos</button>
+        </div>
+        <button class="btn btn-primary shrink-0" id="evNew" aria-label="Novo evento"></button>
+      </div>
+    </div>
+    <div id="evList" class="flex flex-col gap-2"></div>
+    <div id="evMore" class="hidden flex-col items-center gap-2 pt-1">
+      <span class="text-xs text-slate-500" id="evCount"></span>
+      <button class="btn btn-sm" id="evMoreBtn">Carregar mais</button>
+    </div>
+  </section>
+
+  <!-- aba pessoas -->
+  <section id="tab-people" class="hidden flex-col gap-3">
+    <div class="flex gap-2">
+      <div class="search flex-1" id="pSearch"><input id="pQ" class="input" placeholder="Buscar por nome ou matrícula" type="search" autocomplete="off"></div>
+      <a class="btn btn-primary shrink-0" href="/cadastro" id="pNew" aria-label="Cadastrar pessoa"></a>
+    </div>
+    <div id="pList" class="flex flex-col gap-2"></div>
+  </section>
+</main>
+
+<script src="/static/ui.js?v=17"></script>
+<script>
+UI.mount({ active: 'admin', title: 'Admin' });
+const $ = id => document.getElementById(id);
+const PAGE = 20;
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+const skeletons = (n, h = 74) => Array.from({ length: n }, () => `<div class="skeleton" style="height:${h}px"></div>`).join('');
+const S = { tab: 'dash', scope: 'upcoming', q: '', events: [], total: 0, people: [], pq: '' };
+try { S.tab = localStorage.getItem('fc_admin_tab') || S.tab; S.scope = localStorage.getItem('fc_admin_scope') || S.scope; } catch (_) {}
+const saveScope = () => { try { localStorage.setItem('fc_admin_scope', S.scope); } catch (_) {} };
+
+$('evSearch').insertAdjacentHTML('afterbegin', icon('search', 18));
+$('pSearch').insertAdjacentHTML('afterbegin', icon('search', 18));
+$('evNew').innerHTML = `${icon('plus', 18)}<span class="hidden sm:inline">Novo evento</span>`;
+$('pNew').innerHTML = `${icon('plus', 18)}<span class="hidden sm:inline">Cadastrar</span>`;
+$('tabDashBtn').insertAdjacentHTML('afterbegin', icon('admin', 16));
+
+// ---------------- KPIs ----------------
+async function loadStats() {
+  const s = await api('/api/stats');
+  $('kpis').innerHTML = [
+    ['Eventos próximos', s.upcoming, s.today ? `${s.today} hoje` : 'nenhum hoje', 'calendar', 'text-indigo-300', 'events'],
+    ['Presenças hoje', s.checkins_today, 'registradas hoje', 'check', 'text-emerald-300', ''],
+    ['Pessoas', s.people, 'com cadastro', 'users', 'text-violet-300', 'people'],
+    ['Poucas amostras', s.low_samples, 'menos de 3 fotos', 'alert', s.low_samples ? 'text-amber-300' : 'text-slate-500', 'people'],
+  ].map(([l, v, sub, ic, color]) => `<div class="card p-3.5 sm:p-4 flex flex-col gap-1">
+      <div class="flex items-start justify-between gap-2 w-full"><span class="label !mb-0 leading-snug">${l}</span><span class="${color} shrink-0">${icon(ic, 18)}</span></div>
+      <div class="text-3xl font-bold">${v}</div><div class="text-xs text-slate-500 leading-snug">${sub}</div></div>`).join('');
+  $('cntEvents').textContent = s.events;
+  $('cntPeople').textContent = s.people;
+}
+
+// ---------------- abas ----------------
+function setTab(t) {
+  S.tab = t; try { localStorage.setItem('fc_admin_tab', t); } catch (_) {}
+  document.querySelectorAll('#tabs [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  for (const name of ['dash', 'events', 'people']) {
+    $('tab-' + name).classList.toggle('hidden', t !== name);
+    $('tab-' + name).classList.toggle('flex', t === name);
+  }
+}
+$('tabs').onclick = e => { const b = e.target.closest('[data-tab]'); if (b) setTab(b.dataset.tab); };
+// atalhos do painel (cards e "ver todos")
+$('tab-dash').addEventListener('click', e => {
+  const g = e.target.closest('[data-goto]');
+  if (g) { if (g.dataset.goto === 'events' && S.scope !== 'upcoming') { S.scope = 'upcoming'; saveScope(); loadEvents(); } setTab(g.dataset.goto); window.scrollTo({ top: 0 }); return; }
+  const ev = e.target.closest('[data-ev]'); if (ev) return openEvent(+ev.dataset.ev);
+  const ps = e.target.closest('[data-person]'); if (ps) return openPerson(+ps.dataset.person);
+});
+
+// ---------------- painel: listas rápidas ----------------
+async function loadDash() {
+  const up = await api('/api/events?scope=upcoming&limit=5');
+  $('dashEvents').innerHTML = up.items.length ? up.items.map(eventRow).join('')
+    : `<div class="empty !py-6"><div class="ic">${icon('calendar', 24)}</div><div class="text-sm">Nenhum evento próximo.</div>
+       <button class="btn btn-primary btn-sm mt-1" data-act="new-dash">${icon('plus', 16)} Novo evento</button></div>`;
+}
+function renderDashPeople() {
+  const low = S.people.filter(p => p.samples < 3).sort((a, b) => a.samples - b.samples);
+  $('dashPeople').innerHTML = low.length ? low.slice(0, 5).map(personRow).join('')
+    + (low.length > 5 ? `<p class="text-xs text-slate-500 text-center">e mais ${low.length - 5}</p>` : '')
+    : `<div class="empty !py-6"><div class="ic">${icon('check', 24)}</div><div class="text-sm">Todos com 3 ou mais amostras.</div></div>`;
+}
+$('dashEvents').addEventListener('click', e => { if (e.target.closest('[data-act="new-dash"]')) openEventForm(); });
+
+// ---------------- lista de eventos ----------------
+function dateBadge(iso, extra = '') {
+  const [, m, d] = iso.split('-'), t = todayISO();
+  const cls = iso === t ? 'today' : iso < t ? 'past' : '';
+  return `<div class="date-badge ${cls} ${extra}"><div class="d">${d}</div><div class="m">${MONTHS[+m - 1]}</div></div>`;
+}
+function eventRow(e) {
+  const isToday = e.event_date === todayISO();
+  const expected = e.access === 'list' ? e.participants : null;
+  const pct = expected ? Math.min(100, Math.round(e.checkins / expected * 100)) : 0;
+  const meta = e.access === 'list'
+    ? `${icon('users', 14)}<span>${e.participants} na lista</span>`
+    : `${icon('globe', 14)}<span>Aberto a todos</span>`;
+  return `<button class="row-item" data-ev="${e.id}">
+    ${dateBadge(e.event_date)}
+    <div class="min-w-0 flex-1">
+      <div class="flex items-start gap-2 min-w-0"><span class="font-semibold leading-snug line-clamp-2 sm:line-clamp-1 break-words">${esc(e.name)}</span>
+        ${isToday ? '<span class="chip chip-ok !py-0 !text-[11px] shrink-0 mt-0.5">hoje</span>' : ''}</div>
+      <div class="text-xs sm:text-sm text-slate-400 flex items-center gap-1.5 mt-0.5 min-w-0">${meta}
+        <span class="text-slate-600 hidden sm:inline">·</span><span class="capitalize hidden sm:inline">${weekday(e.event_date)}</span></div>
+      <!-- celular: presença embaixo do nome -->
+      <div class="sm:hidden flex items-center gap-2 mt-1.5">
+        ${expected ? `<div class="progress flex-1"><i style="width:${pct}%"></i></div>` : '<div class="flex-1"></div>'}
+        <span class="text-xs whitespace-nowrap"><b class="text-white">${e.checkins}</b>${expected != null ? `<span class="text-slate-500">/${expected}</span>` : ''} <span class="text-slate-400">presentes</span></span>
+      </div>
+    </div>
+    <div class="hidden sm:flex flex-col items-end gap-1.5 w-36 shrink-0">
+      <div class="text-sm whitespace-nowrap"><b class="text-white">${e.checkins}</b>${expected != null ? `<span class="text-slate-500">/${expected}</span>` : ''}<span class="text-slate-400 hidden sm:inline"> presentes</span></div>
+      ${expected ? `<div class="progress w-full"><i style="width:${pct}%"></i></div>` : ''}
+    </div>
+    ${icon('chevron', 18)}
+  </button>`;
+}
+async function loadEvents(append = false) {
+  const offset = append ? S.events.length : 0;
+  if (!append) $('evList').innerHTML = skeletons(4);
+  const r = await api(`/api/events?scope=${S.scope}&limit=${PAGE}&offset=${offset}&q=${encodeURIComponent(S.q)}`);
+  S.events = append ? S.events.concat(r.items) : r.items;
+  S.total = r.total;
+  renderEvents();
+}
+function renderEvents() {
+  document.querySelectorAll('#evScope [data-scope]').forEach(b => b.classList.toggle('on', b.dataset.scope === S.scope));
+  if (!S.events.length) {
+    const msg = S.q ? `Nenhum evento encontrado para “${esc(S.q)}”.`
+      : { upcoming: 'Nenhum evento próximo.', past: 'Nenhum evento anterior.', all: 'Nenhum evento ainda.' }[S.scope];
+    $('evList').innerHTML = `<div class="card empty"><div class="ic">${icon('calendar', 26)}</div>
+      <div class="font-semibold text-slate-200">${msg}</div>
+      <div class="flex gap-2 mt-1"><button class="btn btn-primary btn-sm" data-act="new">${icon('plus', 16)} Novo evento</button>
+      ${S.scope !== 'all' ? '<button class="btn btn-sm" data-act="all">Ver todos</button>' : ''}</div></div>`;
+  } else {
+    $('evList').innerHTML = S.events.map(eventRow).join('');
+  }
+  const has = S.events.length > 0;
+  $('evMore').classList.toggle('hidden', !has); $('evMore').classList.toggle('flex', has);
+  $('evCount').textContent = `Mostrando ${S.events.length} de ${S.total}`;
+  $('evMoreBtn').classList.toggle('hidden', S.events.length >= S.total);
+}
+$('evList').onclick = e => {
+  const r = e.target.closest('[data-ev]'); if (r) return openEvent(+r.dataset.ev);
+  const a = e.target.closest('[data-act]'); if (!a) return;
+  if (a.dataset.act === 'new') openEventForm();
+  if (a.dataset.act === 'all') { S.scope = 'all'; saveScope(); loadEvents(); }
+};
+$('evScope').onclick = e => {
+  const b = e.target.closest('[data-scope]'); if (!b) return;
+  S.scope = b.dataset.scope; saveScope(); loadEvents();
+};
+$('evQ').oninput = debounce(() => { S.q = $('evQ').value.trim(); loadEvents(); }, 250);
+$('evMoreBtn').onclick = () => loadEvents(true);
+$('evNew').onclick = () => openEventForm();
+
+// ---------------- lista de pessoas ----------------
+async function loadPeople() { S.people = await api('/api/people'); renderPeople(); }
+function samplesChip(n) {
+  return `<span class="chip ${n >= 3 ? 'chip-ok' : n ? 'chip-warn' : 'chip-bad'} shrink-0" title="Amostras faciais">${icon('face', 13)} ${n}</span>`;
+}
+function personRow(p) {
+  return `<button class="row-item" data-person="${p.id}">${avatar(p.name, 42)}
+    <div class="min-w-0 flex-1"><div class="font-semibold truncate">${esc(p.name)}</div>
+      <div class="text-xs sm:text-sm text-slate-400 truncate">${p.code ? esc(p.code) + ' · ' : ''}${p.events} evento(s)</div></div>
+    ${samplesChip(p.samples)}${icon('chevron', 18)}</button>`;
+}
+function renderPeople() {
+  const q = norm(S.pq);
+  const list = q ? S.people.filter(p => norm(p.name).includes(q) || norm(p.code).includes(q)) : S.people;
+  $('pList').innerHTML = list.length ? list.map(personRow).join('')
+    : `<div class="card empty"><div class="ic">${icon('users', 26)}</div>
+       <div class="font-semibold text-slate-200">${q ? 'Ninguém encontrado.' : 'Ninguém cadastrado ainda.'}</div>
+       <a class="btn btn-primary btn-sm mt-1" href="/cadastro">${icon('plus', 16)} Cadastrar pessoa</a></div>`;
+}
+$('pQ').oninput = debounce(() => { S.pq = $('pQ').value.trim(); renderPeople(); }, 120);
+$('pList').onclick = e => { const r = e.target.closest('[data-person]'); if (r) openPerson(+r.dataset.person); };
+
+async function refreshAll() { await Promise.allSettled([loadStats(), loadEvents(), loadPeople().then(renderDashPeople), loadDash()]); }
+
+// ---------------- modal: criar / editar evento ----------------
+function openEventForm(ev = null, onSaved = null) {
+  const isNew = !ev;
+  const dlg = UI.dialog({
+    size: 'md',
+    title: `<div class="font-bold text-lg">${isNew ? 'Novo evento' : 'Editar evento'}</div>`,
+    body: `<form class="p-5 flex flex-col gap-5" data-form novalidate>
+      <div><label class="label" for="f_name">Nome do evento</label>
+        <input id="f_name" class="input" maxlength="120" placeholder="Ex.: Convenção anual de vendas" value="${esc(ev?.name || '')}" autocomplete="off"></div>
+      <div><label class="label" for="f_date">Data</label>
+        <input id="f_date" class="input" type="date" value="${ev?.event_date || todayISO()}"></div>
+      <div><span class="label">Quem pode registrar presença</span>
+        <div class="grid sm:grid-cols-2 gap-2">
+          <label class="radio-card"><input type="radio" name="access" value="list" ${!ev || ev.access === 'list' ? 'checked' : ''}>
+            <div><div class="font-semibold flex items-center gap-2">${icon('users', 16)} Somente a lista</div>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">Você escolhe os participantes. Quem não estiver na lista é barrado no check-in.</p></div></label>
+          <label class="radio-card"><input type="radio" name="access" value="all" ${ev && ev.access === 'all' ? 'checked' : ''}>
+            <div><div class="font-semibold flex items-center gap-2">${icon('globe', 16)} Todos os cadastrados</div>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">Qualquer pessoa com rosto cadastrado registra presença.</p></div></label>
+        </div></div>
+      <button type="submit" class="hidden" tabindex="-1"></button>
+    </form>`,
+    footer: `<button class="btn" data-close>Cancelar</button><div class="flex-1"></div><button class="btn btn-primary" data-submit></button>`,
+  });
+  const form = dlg.$('[data-form]'), submit = dlg.$('[data-submit]');
+  const access = () => form.querySelector('input[name=access]:checked').value;
+  const label = () => { submit.textContent = !isNew ? 'Salvar' : access() === 'list' ? 'Criar e escolher participantes' : 'Criar evento'; };
+  form.addEventListener('change', label); label();
+  submit.onclick = () => form.requestSubmit();
+  form.onsubmit = async e => {
+    e.preventDefault();
+    const name = dlg.$('#f_name').value.trim();
+    if (!name) { dlg.$('#f_name').focus(); UI.toast('Dê um nome ao evento'); return; }
+    const body = { name, event_date: dlg.$('#f_date').value || null, access: access() };
+    submit.disabled = true;
+    try {
+      const saved = isNew ? await api('/api/events', { method: 'POST', json: body })
+                          : await api('/api/events/' + ev.id, { method: 'PATCH', json: body });
+      dlg.close();
+      UI.toast(isNew ? 'Evento criado' : 'Evento atualizado');
+      if (onSaved) onSaved(saved);
+      else { refreshAll(); openEvent(saved.id, saved.access === 'list' ? 'participants' : 'presence'); }
+    } catch (err) { UI.toast('Erro: ' + err.message); submit.disabled = false; }
+  };
+  if (isNew) setTimeout(() => dlg.$('#f_name').focus(), 80);
+}
+
+// ---------------- modal: detalhes do evento ----------------
+async function openEvent(id, startTab = 'presence') {
+  const V = { tab: startTab, filter: 'all', q: '', pq: '', data: null, people: null, selected: null, original: null, menu: false };
+  let timer = null;
+  const dlg = UI.dialog({
+    size: 'lg',
+    title: '<div class="skeleton h-12 w-56"></div>',
+    body: `<div class="p-4 sm:p-5 flex flex-col gap-4">
+      <div class="grid grid-cols-3 gap-2" data-stats>${skeletons(3, 74)}</div>
+      <div class="progress" data-bar><i style="width:0"></i></div>
+      <div class="seg self-start" data-tabs>
+        <button data-t="presence">${icon('check', 16)} Presença</button>
+        <button data-t="participants">${icon('users', 16)} Participantes</button>
+      </div>
+      <div data-panel>${skeletons(4, 58)}</div>
+    </div>`,
+    onClose: () => { clearInterval(timer); refreshAll(); },
+  });
+
+  async function load() {
+    V.data = await api('/api/events/' + id);
+    if (!V.selected) {
+      V.selected = new Set(V.data.event.access === 'list' ? V.data.people.filter(p => p.listed).map(p => p.person_id) : []);
+      V.original = new Set(V.selected);
+    }
+    renderHead(); renderStats(); renderPresenceList();
+  }
+
+  function renderHead() {
+    const e = V.data.event;
+    dlg.setTitle(`<div class="flex items-center gap-3 min-w-0">
+      ${dateBadge(e.event_date)}
+      <div class="min-w-0 flex-1"><div class="font-bold text-lg leading-tight truncate">${esc(e.name)}</div>
+        <div class="text-xs text-slate-400 mt-0.5 flex items-center gap-1.5 flex-wrap">
+          <span class="capitalize">${weekday(e.event_date)}, ${fmtDate(e.event_date)}</span><span class="text-slate-600">·</span>
+          ${e.access === 'list' ? `${icon('users', 13)} Somente a lista` : `${icon('globe', 13)} Aberto a todos`}</div></div>
+      <div class="relative shrink-0">
+        <button class="btn btn-ghost btn-icon btn-sm ${V.menu ? '!bg-white/10' : ''}" data-menu-toggle title="Opções do evento" aria-haspopup="menu" aria-expanded="${V.menu}">${icon('settings', 19)}</button>
+        <div class="pop-menu ${V.menu ? '' : 'hidden'}" role="menu">
+          <button role="menuitem" data-edit>${icon('edit', 17)} Editar evento</button>
+          <a role="menuitem" href="/api/events/${e.id}/export.csv" data-csv>${icon('download', 17)} Exportar CSV</a>
+          <div class="sep"></div>
+          <button role="menuitem" class="danger" data-del>${icon('trash', 17)} Excluir evento</button>
+        </div>
+      </div></div>`);
+  }
+
+  function renderStats() {
+    const s = V.data.stats, open = V.data.event.access === 'all';
+    dlg.$('[data-stats]').innerHTML = [
+      [open ? 'Cadastrados' : 'Esperados', s.expected, ''],
+      ['Presentes', s.present, 'text-emerald-300'],
+      ['Ausentes', s.absent, s.absent ? 'text-amber-300' : ''],
+    ].map(([l, v, c]) => `<div class="stat"><div class="label !mb-1">${l}</div><div class="v ${c}">${v}</div></div>`).join('');
+    dlg.$('[data-bar] > i').style.width = (s.expected ? Math.round(s.present / s.expected * 100) : 0) + '%';
+  }
+
+  dlg.$('[data-tabs]').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { V.tab = b.dataset.t; renderPanel(); } };
+
+  function renderPanel() {
+    dlg.$$('[data-tabs] [data-t]').forEach(b => b.classList.toggle('on', b.dataset.t === V.tab));
+    const panel = dlg.$('[data-panel]');
+    if (V.tab === 'presence') {
+      panel.innerHTML = `<div class="flex flex-col sm:flex-row gap-2">
+          <div class="search flex-1">${icon('search', 18)}<input class="input" placeholder="Buscar pessoa" type="search" data-q value="${esc(V.q)}" autocomplete="off"></div>
+          <div class="seg" data-filter><button data-f="all">Todos</button><button data-f="present">Presentes</button><button data-f="absent">Ausentes</button></div>
+        </div>
+        <div class="flex flex-col gap-1.5 mt-3" data-list></div>`;
+      panel.querySelector('[data-q]').oninput = debounce(ev => { V.q = ev.target.value.trim(); renderPresenceList(); }, 120);
+      panel.querySelector('[data-filter]').onclick = ev => {
+        const b = ev.target.closest('[data-f]'); if (b) { V.filter = b.dataset.f; renderPresenceList(); }
+      };
+      renderPresenceList();
+    } else {
+      renderParticipants();
+    }
+  }
+
+  function renderPresenceList() {
+    const panel = dlg.$('[data-panel]'), list = panel && panel.querySelector('[data-list]');
+    if (!list || !V.data) return;
+    panel.querySelectorAll('[data-filter] [data-f]').forEach(b => b.classList.toggle('on', b.dataset.f === V.filter));
+    const e = V.data.event, q = norm(V.q);
+    if (!V.data.people.length) {
+      list.innerHTML = e.access === 'list'
+        ? `<div class="empty"><div class="ic">${icon('users', 26)}</div><div class="font-semibold text-slate-200">Ninguém na lista deste evento</div>
+           <p class="text-sm">Sem participantes, ninguém consegue registrar presença.</p>
+           <button class="btn btn-primary btn-sm mt-1" data-goto="participants">${icon('plus', 16)} Escolher participantes</button></div>`
+        : `<div class="empty"><div class="ic">${icon('users', 26)}</div><div class="font-semibold text-slate-200">Ninguém cadastrado ainda</div></div>`;
+      return;
+    }
+    let ps = V.data.people;
+    if (V.filter === 'present') ps = ps.filter(p => p.checkin_id);
+    if (V.filter === 'absent') ps = ps.filter(p => !p.checkin_id && p.listed);
+    if (q) ps = ps.filter(p => norm(p.name).includes(q) || norm(p.code).includes(q));
+    // presentes primeiro (mais recente no topo), depois ausentes em ordem alfabética
+    ps = [...ps].sort((a, b) => (!!b.checkin_id - !!a.checkin_id)
+      || (a.checkin_id ? new Date(b.checked_in_at) - new Date(a.checked_in_at) : a.name.localeCompare(b.name, 'pt-BR')));
+    const note = V.data.stats.outside
+      ? `<div class="text-xs text-amber-300/90 flex items-center gap-1.5 mb-1">${icon('alert', 14)} ${V.data.stats.outside} presença(s) de quem saiu da lista depois do check-in</div>` : '';
+    list.innerHTML = note + (ps.map(p => {
+      const status = p.checkin_id
+        ? `<span class="chip ${p.listed ? 'chip-ok' : 'chip-warn'} shrink-0" title="${p.method === 'manual' ? 'Registrada manualmente no admin' : 'Registrada por reconhecimento facial'}">${icon(p.method === 'manual' ? 'edit' : 'check', 13)} ${fmtTime(p.checked_in_at)}${p.method === 'manual' ? ' · manual' : ''}${p.listed ? '' : ' · fora da lista'}</span>`
+        : '<span class="chip shrink-0 text-slate-400">ausente</span>';
+      return `<div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/[.02] border border-white/5">
+        ${avatar(p.name, 36)}
+        <div class="min-w-0 flex-1"><div class="font-medium truncate">${esc(p.name)}</div>${p.code ? `<div class="text-xs text-slate-500 truncate">${esc(p.code)}</div>` : ''}</div>
+        ${status}
+        ${p.checkin_id
+          ? `<button class="btn btn-ghost btn-icon btn-sm shrink-0 text-slate-400" data-undo="${p.checkin_id}" data-name="${esc(p.name)}" title="Desfazer presença">${icon('undo', 17)}</button>`
+          : `<button class="btn btn-ghost btn-icon btn-sm shrink-0 text-emerald-300" data-add="${p.person_id}" data-name="${esc(p.name)}" title="Registrar presença manualmente">${icon('plus', 18, 2.4)}</button>`}
+      </div>`;
+    }).join('') || '<p class="text-sm text-slate-500 text-center py-6">Ninguém neste filtro.</p>');
+  }
+
+  async function renderParticipants() {
+    const panel = dlg.$('[data-panel]'), e = V.data.event;
+    if (e.access === 'all') {
+      panel.innerHTML = `<div class="empty"><div class="ic">${icon('globe', 26)}</div>
+        <div class="font-semibold text-slate-200">Evento aberto a todos os cadastrados</div>
+        <p class="text-sm max-w-sm">Qualquer pessoa com rosto cadastrado registra presença. Para escolher quem participa, restrinja o evento a uma lista.</p>
+        <button class="btn btn-primary btn-sm mt-1" data-restrict>${icon('users', 16)} Restringir a uma lista</button></div>`;
+      return;
+    }
+    if (!V.people) { panel.innerHTML = skeletons(5, 54); V.people = await api('/api/people'); }
+    if (V.tab !== 'participants') return;
+    panel.innerHTML = `<div class="flex flex-col sm:flex-row gap-2">
+        <div class="search flex-1">${icon('search', 18)}<input class="input" placeholder="Buscar por nome ou matrícula" type="search" data-pq value="${esc(V.pq)}" autocomplete="off"></div>
+        <div class="flex gap-2"><button class="btn btn-sm flex-1 whitespace-nowrap" data-all>Marcar todos</button><button class="btn btn-sm flex-1 whitespace-nowrap" data-none>Desmarcar</button></div>
+      </div>
+      <p class="text-xs text-slate-500 mt-2">Marcar e desmarcar valem para quem aparece na busca.</p>
+      <div class="flex flex-col gap-1 mt-2" data-plist></div>
+      <div class="sticky bottom-0 mt-3 p-3 rounded-2xl bg-slate-900/95 backdrop-blur border border-white/10 flex items-center gap-3 shadow-2xl">
+        <div class="text-sm min-w-0"><b data-count></b> <span class="text-slate-400">selecionado(s)</span>
+          <div class="text-amber-300 text-xs" data-dirty></div></div>
+        <div class="flex-1"></div>
+        <button class="btn btn-primary btn-sm" data-save>Salvar lista</button>
+      </div>`;
+    panel.querySelector('[data-pq]').oninput = debounce(ev => { V.pq = ev.target.value.trim(); renderPList(); }, 120);
+    panel.querySelector('[data-all]').onclick = () => { filteredPeople().forEach(p => V.selected.add(p.id)); renderPList(); };
+    panel.querySelector('[data-none]').onclick = () => { filteredPeople().forEach(p => V.selected.delete(p.id)); renderPList(); };
+    panel.querySelector('[data-plist]').onchange = ev => {
+      const cb = ev.target.closest('[data-pid]'); if (!cb) return;
+      cb.checked ? V.selected.add(+cb.dataset.pid) : V.selected.delete(+cb.dataset.pid);
+      renderCount();
+    };
+    panel.querySelector('[data-save]').onclick = saveParticipants;
+    renderPList();
+  }
+  const filteredPeople = () => {
+    const q = norm(V.pq);
+    return q ? V.people.filter(p => norm(p.name).includes(q) || norm(p.code).includes(q)) : V.people;
+  };
+  function renderPList() {
+    const el = dlg.$('[data-plist]'); if (!el) return;
+    const ps = filteredPeople();
+    el.innerHTML = ps.map(p => `<label class="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/5 cursor-pointer">
+        <input type="checkbox" class="check" data-pid="${p.id}" ${V.selected.has(p.id) ? 'checked' : ''}>
+        ${avatar(p.name, 34)}
+        <div class="min-w-0 flex-1"><div class="font-medium truncate">${esc(p.name)}</div>${p.code ? `<div class="text-xs text-slate-500 truncate">${esc(p.code)}</div>` : ''}</div>
+        ${p.samples < 3 ? samplesChip(p.samples) : ''}
+      </label>`).join('')
+      || `<p class="text-sm text-slate-500 text-center py-6">${V.people.length ? 'Ninguém encontrado.' : 'Ninguém cadastrado ainda.'}</p>`;
+    renderCount();
+  }
+  const isDirty = () => V.selected.size !== V.original.size || [...V.selected].some(x => !V.original.has(x));
+  function renderCount() {
+    const c = dlg.$('[data-count]'); if (!c) return;
+    c.textContent = V.selected.size;
+    const d = isDirty();
+    dlg.$('[data-dirty]').textContent = d ? 'alterações não salvas' : '';
+    dlg.$('[data-save]').disabled = !d;
+  }
+  async function saveParticipants() {
+    const btn = dlg.$('[data-save]'); btn.disabled = true;
+    try {
+      await api(`/api/events/${id}/participants`, { method: 'PUT', json: { person_ids: [...V.selected] } });
+      V.original = new Set(V.selected);
+      UI.toast('Lista de participantes salva');
+      await load(); renderCount();
+    } catch (err) { UI.toast('Erro: ' + err.message); btn.disabled = false; }
+  }
+
+  dlg.el.addEventListener('click', async e => {
+    const t = e.target;
+    try {
+      // menu da engrenagem: abre/fecha; qualquer clique fora ou numa opção fecha
+      if (t.closest('[data-menu-toggle]')) { V.menu = !V.menu; return renderHead(); }
+      if (V.menu) { V.menu = false; renderHead(); }
+      if (t.closest('[data-csv]')) return;
+      if (t.closest('[data-edit]')) {
+        return openEventForm(V.data.event, async () => { V.selected = null; await load(); renderPanel(); });
+      }
+      const g = t.closest('[data-goto]');
+      if (g) { V.tab = g.dataset.goto; return renderPanel(); }
+      if (t.closest('[data-restrict]')) {
+        await api('/api/events/' + id, { method: 'PATCH', json: { access: 'list' } });
+        V.selected = null; await load(); return renderPanel();
+      }
+      const ad = t.closest('[data-add]');
+      if (ad) {
+        const ok = await UI.confirm({
+          title: 'Registrar presença?', confirmText: 'Registrar',
+          message: `<b class="text-slate-200">${esc(ad.dataset.name)}</b> será marcado como presente agora, como presença <b class="text-slate-200">manual</b> (sem reconhecimento facial). Fica indicado no relatório.` });
+        if (!ok) return;
+        await api(`/api/events/${id}/checkins`, { method: 'POST', json: { person_id: +ad.dataset.add } });
+        UI.toast('Presença registrada'); return load();
+      }
+      const u = t.closest('[data-undo]');
+      if (u) {
+        const ok = await UI.confirm({
+          title: 'Desfazer presença?', danger: true, confirmText: 'Desfazer',
+          message: `A presença de <b class="text-slate-200">${esc(u.dataset.name)}</b> será removida. A pessoa poderá registrar de novo no check-in.` });
+        if (!ok) return;
+        await api(`/api/events/${id}/checkins/${u.dataset.undo}`, { method: 'DELETE' });
+        UI.toast('Presença removida'); return load();
+      }
+      if (t.closest('[data-del]')) {
+        const ev = V.data.event, n = V.data.stats.present + V.data.stats.outside;
+        const ok = await UI.confirm({
+          title: `Excluir “${esc(ev.name)}”?`, danger: true, confirmText: 'Excluir evento',
+          message: `A lista de participantes e ${n} presença(s) registrada(s) serão apagadas. Não dá para desfazer.` });
+        if (!ok) return;
+        await api('/api/events/' + id, { method: 'DELETE' });
+        dlg.close(); UI.toast('Evento excluído');
+      }
+    } catch (err) { UI.toast('Erro: ' + err.message); }
+  });
+
+  try {
+    await load();
+    renderPanel();
+    timer = setInterval(() => { if (!document.hidden && V.tab === 'presence') load().catch(() => {}); }, 5000);
+  } catch (err) {
+    dlg.setBody(`<div class="empty"><div class="ic">${icon('alert', 26)}</div><div>${esc(err.message)}</div></div>`);
+  }
+}
+
+// ---------------- modal: pessoa ----------------
+async function openPerson(id, startTab = 'data') {
+  let P = null, tab = startTab;
+  const dlg = UI.dialog({
+    size: 'md',
+    title: '<div class="skeleton h-11 w-52"></div>',
+    body: `<div class="p-5">${skeletons(3, 70)}</div>`,
+    onClose: () => refreshAll(),
+  });
+
+  async function load() { P = await api('/api/people/' + id); render(); }
+
+  function render() {
+    const n = P.samples.length, today = todayISO();
+    dlg.setTitle(`<div class="flex items-center gap-3 min-w-0">${avatar(P.name, 44)}
+      <div class="min-w-0"><div class="font-bold text-lg truncate leading-tight">${esc(P.name)}</div>
+      <div class="text-xs text-slate-400 truncate">Cadastrado em ${fmtDate(P.created_at)}${P.code ? ' · ' + esc(P.code) : ''}</div></div></div>`);
+    const pane = name => tab === name ? '' : 'hidden';
+    dlg.setBody(`<div class="p-4 sm:p-5 flex flex-col gap-4">
+      <div class="seg tabs3" data-ptabs>
+        <button data-pt="data" class="${tab === 'data' ? 'on' : ''}">Dados</button>
+        <button data-pt="samples" class="${tab === 'samples' ? 'on' : ''}">Amostras <span class="count">${n}</span></button>
+        <button data-pt="events" class="${tab === 'events' ? 'on' : ''}">Eventos <span class="count">${P.events.length}</span></button>
+      </div>
+
+      <div data-pane="data" class="${pane('data')} ${tab === 'data' ? 'flex' : ''} flex-col gap-5">
+      <form data-pform class="flex flex-col gap-3">
+        <div class="grid sm:grid-cols-[1fr_180px] gap-3">
+          <div><label class="label" for="p_name">Nome</label><input id="p_name" class="input" value="${esc(P.name)}" maxlength="120" autocomplete="off"></div>
+          <div><label class="label" for="p_code">Matrícula <span class="normal-case tracking-normal font-normal text-slate-500">· opcional</span></label>
+            <input id="p_code" class="input" value="${esc(P.code || '')}" maxlength="40" autocomplete="off"></div>
+        </div>
+        <div class="flex justify-end"><button class="btn btn-primary btn-sm" data-psave disabled>Salvar alterações</button></div>
+      </form>
+      <div class="pt-4 border-t border-white/8 flex items-center justify-between gap-3">
+        <div class="text-xs text-slate-500 min-w-0">Apaga amostras, participação em eventos e presenças.</div>
+        <button class="btn btn-danger btn-sm shrink-0" data-pdel>${icon('trash', 17)} Excluir pessoa</button>
+      </div>
+      </div>
+
+      <section data-pane="samples" class="${pane('samples')}">
+        <div class="flex items-center justify-between gap-2 mb-1">
+          <h3 class="font-semibold flex items-center gap-2">${icon('face', 18)} Amostras faciais</h3>
+          <span class="chip ${n >= 3 ? 'chip-ok' : n ? 'chip-warn' : 'chip-bad'}">${n} de 3+ recomendadas</span>
+        </div>
+        <p class="text-xs text-slate-500 mb-3 leading-relaxed">Só o vetor numérico do rosto é guardado, não a foto. Se a aparência mudou muito (barba, óculos), refaça.</p>
+        <div class="flex flex-col gap-1.5">${n ? P.samples.map((s, i) => `
+          <div class="flex items-center gap-3 p-2.5 rounded-xl bg-white/[.02] border border-white/5">
+            <span class="w-8 h-8 rounded-lg grid place-items-center bg-indigo-500/15 text-indigo-300 text-sm font-bold shrink-0">${i + 1}</span>
+            <div class="min-w-0 flex-1 text-sm"><div>${fmtDateTime(s.created_at)}</div>
+              <div class="text-xs text-slate-500">qualidade da detecção ${Math.round((s.det_score || 0) * 100)}%</div></div>
+            <button class="btn btn-ghost btn-icon btn-sm text-slate-400 shrink-0" data-sdel="${s.id}" data-idx="${i + 1}" title="Apagar amostra">${icon('trash', 17)}</button>
+          </div>`).join('')
+          : `<div class="text-sm text-amber-300/90 flex items-center gap-2 p-3 rounded-xl bg-amber-500/10 border border-amber-400/20">${icon('alert', 16)} Sem amostras: esta pessoa não é reconhecida no check-in.</div>`}
+        </div>
+        <div class="grid grid-cols-2 gap-2 mt-3">
+          <a class="btn btn-sm" href="/cadastro?person=${P.id}">${icon('camera', 17)} Adicionar fotos</a>
+          <button class="btn btn-sm" data-redo ${n ? '' : 'disabled'}>${icon('refresh', 17)} Refazer do zero</button>
+        </div>
+      </section>
+
+      <section data-pane="events" class="${pane('events')}">
+        <h3 class="font-semibold flex items-center gap-2 mb-2">${icon('calendar', 18)} Eventos em que está na lista</h3>
+        ${P.events.length ? `<div class="flex flex-col gap-1.5">${P.events.map(e => `
+          <button class="row-item !py-2" data-open-ev="${e.id}">
+            ${dateBadge(e.event_date, '!w-11 !py-1')}
+            <div class="min-w-0 flex-1 font-medium truncate">${esc(e.name)}</div>
+            ${e.checked_in_at ? `<span class="chip chip-ok shrink-0">${icon('check', 13)} ${fmtTime(e.checked_in_at)}</span>`
+              : `<span class="chip shrink-0 text-slate-400">${e.event_date < today ? 'ausente' : 'pendente'}</span>`}
+          </button>`).join('')}</div>`
+          : '<p class="text-sm text-slate-500">Não está na lista de nenhum evento. Adicione pela aba Participantes de cada evento.</p>'}
+      </section>
+    </div>`);
+
+    dlg.$('[data-ptabs]').onclick = ev => {
+      const b = ev.target.closest('[data-pt]'); if (!b) return;
+      tab = b.dataset.pt;
+      dlg.$$('[data-pt]').forEach(x => x.classList.toggle('on', x === b));
+      dlg.$$('[data-pane]').forEach(x => {
+        const on = x.dataset.pane === tab;
+        x.classList.toggle('hidden', !on);
+        if (x.dataset.pane === 'data') x.classList.toggle('flex', on);
+      });
+    };
+    const f = dlg.$('[data-pform]'), btn = dlg.$('[data-psave]');
+    const changed = () => dlg.$('#p_name').value.trim() !== P.name || dlg.$('#p_code').value.trim() !== (P.code || '');
+    f.oninput = () => { btn.disabled = !changed() || !dlg.$('#p_name').value.trim(); };
+    f.onsubmit = async e => {
+      e.preventDefault(); if (btn.disabled) return; btn.disabled = true;
+      try {
+        await api('/api/people/' + id, { method: 'PATCH', json: { name: dlg.$('#p_name').value, code: dlg.$('#p_code').value } });
+        UI.toast('Cadastro atualizado'); await load();
+      } catch (err) { UI.toast('Erro: ' + err.message); btn.disabled = false; }
+    };
+  }
+
+  dlg.el.addEventListener('click', async e => {
+    const t = e.target;
+    try {
+      const sd = t.closest('[data-sdel]');
+      if (sd) {
+        const last = P.samples.length === 1;
+        const ok = await UI.confirm({
+          title: `Apagar a amostra ${sd.dataset.idx}?`, danger: true, confirmText: 'Apagar',
+          message: last ? 'É a última amostra: a pessoa deixa de ser reconhecida até cadastrar fotos de novo.' : 'As outras amostras continuam valendo.' });
+        if (!ok) return;
+        await api(`/api/people/${id}/samples/${sd.dataset.sdel}`, { method: 'DELETE' });
+        UI.toast('Amostra apagada'); return load();
+      }
+      if (t.closest('[data-redo]')) {
+        const ok = await UI.confirm({
+          title: 'Refazer as fotos do zero?', danger: true, confirmText: 'Apagar e capturar',
+          message: `As ${P.samples.length} amostras atuais serão apagadas e você vai para a captura de novas fotos.` });
+        if (!ok) return;
+        await api(`/api/people/${id}/samples`, { method: 'DELETE' });
+        location.href = '/cadastro?person=' + id; return;
+      }
+      const oe = t.closest('[data-open-ev]');
+      if (oe) return openEvent(+oe.dataset.openEv);
+      if (t.closest('[data-pdel]')) {
+        const ok = await UI.confirm({
+          title: `Excluir ${esc(P.name)}?`, danger: true, confirmText: 'Excluir pessoa',
+          message: `Apaga as amostras faciais, a participação em ${P.events.length} evento(s) e as presenças registradas. Não dá para desfazer.` });
+        if (!ok) return;
+        await api('/api/people/' + id, { method: 'DELETE' });
+        dlg.close(); UI.toast('Pessoa excluída');
+      }
+    } catch (err) { UI.toast('Erro: ' + err.message); }
+  });
+
+  try { await load(); }
+  catch (err) { dlg.setBody(`<div class="empty"><div class="ic">${icon('alert', 26)}</div><div>${esc(err.message)}</div></div>`); }
+}
+
+// ---------------- início ----------------
+setTab(S.tab);
+refreshAll();
+// atalhos: /admin#evento=12 ou /admin#pessoa=3
+function openFromHash() {
+  if (!location.hash) return;
+  const hash = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, '', location.pathname);
+  if (hash.get('evento')) openEvent(+hash.get('evento'));
+  if (hash.get('pessoa')) { setTab('people'); openPerson(+hash.get('pessoa')); }
+}
+openFromHash();
+window.addEventListener('hashchange', openFromHash);
+</script>
+</body>
+</html>

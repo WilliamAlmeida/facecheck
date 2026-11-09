@@ -1,0 +1,570 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FaceCheck">
+<title>FaceCheck · Cadastro</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/theme.js?v=10"></script>
+<link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body class="min-h-dvh flex flex-col">
+
+<main class="flex-1 w-full max-w-3xl mx-auto p-4 sm:p-6 flex flex-col gap-3 sm:gap-4">
+
+  <!-- stepper -->
+  <div class="flex items-center gap-2 sm:gap-3" id="stepper">
+    <div class="step active" data-step="1"><span class="n">1</span><span class="hidden sm:inline">Pessoa</span></div>
+    <div class="step-line" data-line="1"></div>
+    <div class="step" data-step="2"><span class="n">2</span><span class="hidden sm:inline">Fotos</span></div>
+    <div class="step-line" data-line="2"></div>
+    <div class="step" data-step="3"><span class="n">3</span><span class="hidden sm:inline">Eventos</span></div>
+  </div>
+
+  <!-- ============ passo 1: pessoa ============ -->
+  <section id="step1" class="card p-5 sm:p-7 flex flex-col gap-5 pop">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Quem vamos cadastrar?</h1>
+      <p class="text-slate-400 mt-1 text-sm">Crie uma pessoa nova ou escolha alguém já cadastrado para adicionar ou refazer as fotos.</p>
+    </div>
+
+    <div class="seg self-start" id="modeSeg">
+      <button data-mode="new" class="on">Nova pessoa</button>
+      <button data-mode="existing">Já cadastrada <span class="count" id="peopleCount">–</span></button>
+    </div>
+
+    <!-- nova -->
+    <form id="newPanel" class="flex flex-col gap-4" novalidate>
+      <div class="grid sm:grid-cols-[1fr_180px] gap-3">
+        <div>
+          <label class="label" for="name">Nome completo</label>
+          <input id="name" class="input text-lg" placeholder="Ex.: Maria Silva" autocomplete="off" enterkeyhint="next" maxlength="120">
+        </div>
+        <div>
+          <label class="label" for="code">Matrícula <span class="normal-case tracking-normal font-normal text-slate-500">· opcional</span></label>
+          <input id="code" class="input text-lg" placeholder="Ex.: 10234" autocomplete="off" enterkeyhint="go" maxlength="40">
+        </div>
+      </div>
+      <div id="dupWarn" class="hidden"></div>
+      <button id="create" type="submit" class="btn btn-primary btn-lg w-full">Continuar para as fotos</button>
+    </form>
+
+    <!-- já cadastrada -->
+    <div id="existingPanel" class="hidden flex-col gap-3">
+      <div class="search" id="pSearch"><input id="pQ" class="input" placeholder="Buscar por nome ou matrícula" type="search" autocomplete="off"></div>
+      <div id="pList" class="flex flex-col gap-2 max-h-[52dvh] overflow-y-auto -mx-1 px-1"></div>
+    </div>
+  </section>
+
+  <!-- ============ passo 2: fotos ============ -->
+  <section id="step2" class="hidden flex-col gap-4 pop">
+    <div class="flex items-center gap-3">
+      <span id="pAvatar"></span>
+      <div class="min-w-0 flex-1">
+        <h1 class="text-xl sm:text-2xl font-bold tracking-tight truncate" id="personTitle">—</h1>
+        <p class="text-slate-400 text-sm truncate" id="personSub"></p>
+      </div>
+      <div class="relative w-14 h-14 shrink-0" title="Amostras faciais">
+        <svg viewBox="0 0 40 40" class="w-14 h-14 -rotate-90"><circle cx="20" cy="20" r="17" fill="none" stroke="rgba(255,255,255,.1)" stroke-width="4"/>
+          <circle id="ring" cx="20" cy="20" r="17" fill="none" stroke="#c81e25" stroke-width="4" stroke-linecap="round" stroke-dasharray="106.8" stroke-dashoffset="106.8" style="transition: stroke-dashoffset .3s, stroke .3s"/></svg>
+        <div class="absolute inset-0 grid place-items-center text-sm font-bold" id="ringText">0/3</div>
+      </div>
+    </div>
+
+    <!-- câmera -->
+    <div class="card overflow-hidden">
+      <div id="camArea" class="relative overflow-hidden bg-black aspect-[3/4] sm:aspect-video max-h-[64dvh] mx-auto w-full">
+        <video id="video" class="absolute inset-0 w-full h-full object-cover mirror" autoplay muted playsinline></video>
+        <svg id="guide" class="face-guide cam-hide" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs><mask id="hole"><rect width="100" height="100" fill="#fff"/><ellipse cx="50" cy="46" rx="26" ry="33" fill="#000"/></mask></defs>
+          <rect class="mask" width="100" height="100" mask="url(#hole)"/>
+          <ellipse cx="50" cy="46" rx="26" ry="33" vector-effect="non-scaling-stroke"/>
+        </svg>
+        <div id="flash" class="absolute inset-0 bg-white opacity-0 pointer-events-none transition-opacity duration-150"></div>
+
+        <!-- poses (lateral esquerda da câmera) -->
+        <div id="poses" class="cam-hide absolute left-2 sm:left-4 top-1/2 -translate-y-1/2 flex flex-col gap-3 z-10 pointer-events-none"></div>
+
+        <!-- helper ao vivo -->
+        <div class="cam-hide absolute top-3 inset-x-3 flex justify-center pointer-events-none">
+          <div id="helper" class="chip !text-sm !px-4 !py-2 shadow-lg transition-colors"><span id="helperIco" class="inline-flex"></span><span id="helperText">Iniciando câmera…</span></div>
+        </div>
+
+        <!-- controles sobre a câmera -->
+        <div class="cam-hide absolute bottom-0 inset-x-0 p-3 sm:p-4 flex items-end justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent pt-10">
+          <div class="flex gap-2 w-32">
+            <button class="cam-btn" id="camBtn" title="Trocar câmera" aria-label="Trocar câmera"></button>
+            <button class="cam-btn" id="mirrorBtn" title="Espelhar imagem" aria-label="Espelhar imagem"></button>
+          </div>
+          <button id="capture" class="shutter" aria-label="Capturar foto" disabled><span></span></button>
+          <div class="flex justify-end gap-2 w-32">
+            <button class="cam-btn" id="soundBtn" title="Som de confirmação" aria-label="Som de confirmação"></button>
+            <button class="cam-btn !w-auto px-3 gap-1.5 text-xs font-bold" id="autoBtn" title="Captura automática quando o enquadramento estiver bom">AUTO</button>
+          </div>
+        </div>
+      </div>
+      <div class="px-4 py-3 flex flex-col gap-3">
+        <div id="thumbs" class="flex gap-2 overflow-x-auto no-scrollbar min-h-[68px] items-center">
+          <span class="text-sm text-slate-500" id="thumbsEmpty">As fotos capturadas aparecem aqui.</span>
+        </div>
+        <div id="metrics" class="cam-hide text-[11px] text-slate-600 font-mono truncate"></div>
+      </div>
+    </div>
+
+    <div id="tipsRow" class="flex gap-2 overflow-x-auto no-scrollbar -mx-1 px-1 text-xs whitespace-nowrap">
+      <span class="chip" data-ico="bulb">Luz de frente, sem contraluz</span>
+      <span class="chip" data-ico="user">Só uma pessoa no quadro</span>
+      <span class="chip" data-ico="glasses">Sem óculos escuros ou boné</span>
+      <span class="chip" data-ico="ruler">Braço esticado, ~50 cm</span>
+    </div>
+
+    <div class="sticky bottom-0 -mx-4 sm:mx-0 px-4 sm:px-0 py-3 bg-gradient-to-t from-[#0a0a0a] via-[#0a0a0a]/95 to-transparent flex gap-2" style="padding-bottom: max(.75rem, env(safe-area-inset-bottom))">
+      <button id="back1" class="btn flex-1">Voltar</button>
+      <button id="finish" class="btn btn-success flex-[2]" disabled>Concluir fotos</button>
+    </div>
+  </section>
+
+  <!-- ============ passo 3: eventos ============ -->
+  <section id="step3" class="hidden flex-col gap-4 pop">
+    <div class="card p-6 sm:p-7 flex flex-col items-center text-center gap-3">
+      <div class="w-16 h-16 rounded-full grid place-items-center bg-gradient-to-br from-emerald-500 to-green-400 text-white shadow-xl shadow-emerald-500/30">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+      </div>
+      <h1 class="text-2xl font-bold tracking-tight">Fotos salvas</h1>
+      <p class="text-slate-400 text-sm" id="doneText">—</p>
+    </div>
+
+    <div class="card p-5 sm:p-6 flex flex-col gap-3">
+      <div>
+        <h2 class="font-bold text-lg">Em quais eventos esta pessoa vai participar?</h2>
+        <p class="text-slate-400 text-sm">Em eventos com lista, só quem está incluído consegue registrar presença.</p>
+      </div>
+      <div id="evList" class="flex flex-col gap-2"></div>
+    </div>
+
+    <div class="flex flex-col sm:flex-row gap-2">
+      <button id="another" class="btn btn-primary btn-lg sm:flex-1">Cadastrar outra pessoa</button>
+      <a href="/admin" id="toAdmin" class="btn btn-lg">Ver no admin</a>
+      <a href="/" class="btn btn-lg">Ir para o check-in</a>
+    </div>
+  </section>
+</main>
+
+<script src="/static/cam.js?v=16"></script>
+<script src="/static/ui.js?v=17"></script>
+<script>
+UI.mount({ active: 'cadastro', title: 'Cadastro' });
+
+const $ = id => document.getElementById(id);
+const video = $('video');
+const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+const MIN = 3, MAX = 5, AUTO_STREAK = 3;             // AUTO: 3 análises "boas" seguidas (~1,5 s)
+const POSES = [
+  { label: 'De frente', ico: 'face', guide: 'Olhe de frente para a câmera' },
+  { label: 'Um lado', ico: 'turnLeft', guide: 'Vire levemente o rosto para um lado' },
+  { label: 'Outro lado', ico: 'turnRight', guide: 'Agora vire para o outro lado' },
+];
+let PEOPLE = [], person = null, base = 0, shots = [];   // shots: fotos desta sessão {id, yaw, url}
+let camStarted = false, capturing = false, analyzing = false, goodStreak = 0, cooldownUntil = 0, lastYawSeen = null;
+let camId = null, autoOn = true;
+try { camId = localStorage.getItem('fc_camera'); autoOn = localStorage.getItem('fc_autocap') !== '0'; } catch (_) {}
+
+$('pSearch').insertAdjacentHTML('afterbegin', icon('search', 18));
+$('camBtn').innerHTML = icon('camera', 20);
+$('mirrorBtn').innerHTML = icon('mirror', 20);
+document.querySelectorAll('[data-ico]').forEach(el => el.insertAdjacentHTML('afterbegin', icon(el.dataset.ico, 14)));
+$('helperIco').innerHTML = icon('loader', 16, 2.4);
+
+// ================= som de confirmação =================
+// Gerado com Web Audio (sem arquivo). O navegador só libera áudio depois de um toque na página;
+// por isso o contexto é "destravado" no primeiro toque (escolher a pessoa, Continuar etc.).
+const Sound = {
+  ctx: null, on: true,
+  unlock() {
+    try {
+      if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      if (this.ctx.state === 'suspended') this.ctx.resume();
+    } catch (_) {}
+  },
+  tone(freq, at, dur, type = 'sine', vol = 0.35) {
+    const c = this.ctx, t = c.currentTime + at, o = c.createOscillator(), g = c.createGain();
+    o.type = type; o.frequency.setValueAtTime(freq, t);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(vol, t + 0.012);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(c.destination); o.start(t); o.stop(t + dur + 0.03);
+  },
+  play(kind) {
+    if (!this.on) return;
+    this.unlock(); if (!this.ctx) return;
+    if (kind === 'ok') { this.tone(880, 0, 0.13); this.tone(1320, 0.11, 0.2); }                                    // foto salva
+    else if (kind === 'done') { this.tone(660, 0, 0.13); this.tone(880, 0.13, 0.13); this.tone(1320, 0.26, 0.35); } // poses completas
+    else if (kind === 'error') { this.tone(196, 0, 0.32, 'square', 0.12); }                                         // não salvou
+  },
+};
+try { Sound.on = localStorage.getItem('fc_sound') !== '0'; } catch (_) {}
+document.addEventListener('pointerdown', () => Sound.unlock(), { passive: true });
+function syncSoundBtn() {
+  $('soundBtn').innerHTML = icon(Sound.on ? 'volume' : 'mute', 20);
+  $('soundBtn').classList.toggle('on', Sound.on);
+  $('soundBtn').title = Sound.on ? 'Som de confirmação ligado' : 'Som de confirmação desligado';
+}
+$('soundBtn').onclick = () => {
+  Sound.on = !Sound.on;
+  try { localStorage.setItem('fc_sound', Sound.on ? '1' : '0'); } catch (_) {}
+  syncSoundBtn();
+  if (Sound.on) Sound.play('ok');
+};
+syncSoundBtn();
+
+// ================= passo 1 =================
+function setMode(m) {
+  document.querySelectorAll('#modeSeg [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === m));
+  $('newPanel').classList.toggle('hidden', m !== 'new');
+  $('existingPanel').classList.toggle('hidden', m !== 'existing'); $('existingPanel').classList.toggle('flex', m === 'existing');
+  if (m === 'existing') { renderPeople(); setTimeout(() => $('pQ').focus(), 50); } else setTimeout(() => $('name').focus(), 50);
+}
+$('modeSeg').onclick = e => { const b = e.target.closest('[data-mode]'); if (b) setMode(b.dataset.mode); };
+
+async function loadPeople() {
+  PEOPLE = await api('/api/people');
+  $('peopleCount').textContent = PEOPLE.length;
+  renderPeople();
+}
+function samplesChip(n) {
+  return `<span class="chip ${n >= 3 ? 'chip-ok' : n ? 'chip-warn' : 'chip-bad'} shrink-0" title="Amostras faciais">${icon('face', 13)} ${n}</span>`;
+}
+function renderPeople() {
+  const q = norm($('pQ').value);
+  const list = q ? PEOPLE.filter(p => norm(p.name).includes(q) || norm(p.code).includes(q)) : PEOPLE;
+  $('pList').innerHTML = list.slice(0, 60).map(p => `
+    <button class="row-item" data-pid="${p.id}">${avatar(p.name, 40)}
+      <div class="min-w-0 flex-1"><div class="font-semibold truncate">${esc(p.name)}</div>
+        <div class="text-xs text-slate-400 truncate">${p.code ? esc(p.code) + ' · ' : ''}${p.samples} amostra(s)${p.samples < 3 ? ' · precisa de fotos' : ''}</div></div>
+      ${samplesChip(p.samples)}${icon('chevron', 18)}</button>`).join('')
+    + (list.length > 60 ? `<p class="text-xs text-slate-500 text-center py-2">Mostrando 60 de ${list.length}. Refine a busca.</p>` : '')
+    || `<div class="empty"><div class="ic">${icon('users', 26)}</div><div>${q ? 'Ninguém encontrado.' : 'Ninguém cadastrado ainda.'}</div></div>`;
+}
+$('pQ').oninput = debounce(renderPeople, 100);
+$('pList').onclick = e => {
+  const b = e.target.closest('[data-pid]'); if (!b) return;
+  const p = PEOPLE.find(x => x.id === +b.dataset.pid); if (p) beginPhotos(p);
+};
+
+// aviso de possível duplicado enquanto digita o nome
+$('name').oninput = debounce(() => {
+  const q = norm($('name').value), box = $('dupWarn');
+  const toks = q.split(/\s+/).filter(t => t.length > 1);
+  const hits = toks.length ? PEOPLE.filter(p => {
+    const n = norm(p.name); return n === q || (toks.length >= 2 && toks.every(t => n.includes(t)));
+  }).slice(0, 3) : [];
+  box.classList.toggle('hidden', !hits.length);
+  box.innerHTML = hits.length ? `<div class="p-3 rounded-xl bg-amber-500/10 border border-amber-400/25 flex flex-col gap-2">
+      <div class="text-sm text-amber-200 flex items-center gap-2">${icon('alert', 16)} Já existe alguém com esse nome. É a mesma pessoa?</div>
+      ${hits.map(p => `<button type="button" class="row-item !py-2" data-pid="${p.id}">${avatar(p.name, 32)}
+        <div class="min-w-0 flex-1 text-sm"><div class="font-semibold truncate">${esc(p.name)}</div><div class="text-xs text-slate-400">${p.code ? esc(p.code) + ' · ' : ''}${p.samples} amostra(s)</div></div>
+        <span class="text-xs font-semibold text-slate-300 shrink-0">Usar esta</span></button>`).join('')}
+    </div>` : '';
+}, 200);
+$('dupWarn').onclick = e => {
+  const b = e.target.closest('[data-pid]'); if (!b) return;
+  const p = PEOPLE.find(x => x.id === +b.dataset.pid); if (p) beginPhotos(p);
+};
+$('name').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); $('code').focus(); } });
+$('newPanel').onsubmit = async e => {
+  e.preventDefault();
+  const name = $('name').value.trim();
+  if (!name) { $('name').focus(); UI.toast('Digite o nome'); return; }
+  $('create').disabled = true;
+  try {
+    const p = await api('/api/people', { method: 'POST', json: { name, code: $('code').value.trim() || null } });
+    $('name').value = ''; $('code').value = ''; $('dupWarn').classList.add('hidden');
+    PEOPLE.push({ ...p, samples: 0, events: 0 });
+    beginPhotos({ ...p, samples: 0 });
+  } catch (err) { UI.toast('Erro ao criar: ' + err.message); }
+  finally { $('create').disabled = false; }
+};
+
+// ================= navegação =================
+function goStep(n) {
+  [1, 2, 3].forEach(i => {
+    const sec = $('step' + i);
+    sec.classList.toggle('hidden', i !== n); sec.classList.toggle('flex', i === n);
+    document.querySelector(`[data-step="${i}"]`).className = 'step' + (i === n ? ' active' : i < n ? ' done' : '');
+    const ln = document.querySelector(`[data-line="${i}"]`); if (ln) ln.className = 'step-line' + (i < n ? ' done' : '');
+  });
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  if (n === 2) startCam();
+  else { Cam.stop(); camStarted = false; }
+}
+
+function beginPhotos(p) {
+  person = p; base = p.samples || 0; shots.forEach(s => URL.revokeObjectURL(s.url)); shots = [];
+  goodStreak = 0; lastYawSeen = null;
+  $('pAvatar').innerHTML = avatar(p.name, 48);
+  $('personTitle').textContent = p.name;
+  $('personSub').textContent = [p.code, base ? `${base} amostra(s) já cadastrada(s)` : 'novo cadastro'].filter(Boolean).join(' · ');
+  history.replaceState(null, '', '/cadastro?person=' + p.id);
+  renderShots();
+  goStep(2);
+}
+
+// ================= passo 2: fotos =================
+function renderShots() {
+  const n = shots.length, total = base + n;
+  // poses: branco = feita, contorno vermelho = a próxima, apagada = pendente
+  $('poses').innerHTML = POSES.map((p, i) => {
+    const done = n > i, cur = n === i;
+    const dot = done ? 'bg-white text-black border-white'
+      : cur ? 'bg-black/60 text-white border-[#e03a40] ring-4 ring-[#c81e25]/30'
+      : 'bg-black/45 text-white/45 border-white/25';
+    return `<div class="flex flex-col items-center gap-1 w-14">
+      <span class="w-10 h-10 rounded-full grid place-items-center border-2 backdrop-blur ${dot} transition">${icon(done ? 'check' : p.ico, 19, 2.4)}</span>
+      <span class="text-[10px] font-semibold leading-tight text-center ${done || cur ? 'text-white' : 'text-white/50'} [text-shadow:0_1px_3px_#000]">${p.label}</span>
+    </div>`;
+  }).join('');
+  // anel de progresso
+  const pct = Math.min(1, total / MIN);
+  $('ring').style.strokeDashoffset = 106.8 * (1 - pct);
+  $('ring').style.stroke = total >= MIN ? '#22c55e' : '#c81e25';
+  $('ringText').textContent = `${total}/${MIN}`;
+  // miniaturas
+  $('thumbsEmpty').classList.toggle('hidden', n > 0);
+  [...$('thumbs').querySelectorAll('[data-shot]')].forEach(el => el.remove());
+  shots.forEach((s, i) => $('thumbs').insertAdjacentHTML('beforeend', `
+    <div class="relative shrink-0" data-shot="${i}">
+      <img src="${s.url}" class="h-16 w-16 object-cover rounded-xl border-2 border-emerald-400/70 ${s.mirror ? 'mirror' : ''}" alt="">
+      <button class="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-neutral-900 border border-white/20 grid place-items-center text-slate-300 hover:text-white hover:bg-red-600" data-del="${i}" title="Apagar esta foto">${icon('close', 12, 3)}</button>
+    </div>`));
+  $('finish').disabled = total < MIN || n < 1;
+  $('finish').textContent = total >= MIN ? 'Concluir fotos' : `Faltam ${MIN - total} foto(s)`;
+  $('capture').disabled = n >= MAX || !camStarted;
+  syncAutoBtn();
+}
+
+$('thumbs').onclick = async e => {
+  const b = e.target.closest('[data-del]'); if (!b) return;
+  const s = shots[+b.dataset.del]; if (!s) return;
+  try {
+    await api(`/api/people/${person.id}/samples/${s.id}`, { method: 'DELETE' });
+    URL.revokeObjectURL(s.url); shots.splice(+b.dataset.del, 1);
+    goodStreak = 0; renderShots(); UI.toast('Foto apagada');
+  } catch (err) { UI.toast('Erro: ' + err.message); }
+};
+
+// ---- helper ao vivo de enquadramento ----
+function setHelper(ico, text, state) {           // state: '', 'good', 'warn'
+  $('helperIco').innerHTML = icon(ico, 16, 2.4); $('helperText').textContent = text;
+  $('helper').className = 'chip !text-sm !px-4 !py-2 shadow-lg transition-colors ' + (state === 'good' ? 'chip-ok' : state === 'warn' ? 'chip-warn' : '');
+  $('guide').classList.toggle('good', state === 'good');
+  $('guide').classList.toggle('warn', state === 'warn');
+}
+
+function evaluate(res) {
+  const n = shots.length;
+  if (n >= MAX) return ['check', 'Limite de fotos atingido', ''];
+  if (res.faces === 0) return ['face', 'Encaixe o rosto na moldura', 'warn'];
+  if (res.faces > 1) return ['users', 'Apenas uma pessoa no quadro', 'warn'];
+  const f = res.face, b = f.bbox;
+  const area = $('camArea'), W = area.clientWidth, H = area.clientHeight;
+  const s = Math.max(W / res.width, H / res.height), ox = (W - res.width * s) / 2, oy = (H - res.height * s) / 2;
+  let cx = ox + (b.x + b.w / 2) * s; const cy = oy + (b.y + b.h / 2) * s;
+  if (video.classList.contains('mirror')) cx = W - cx;
+  const dx = (cx - 0.5 * W) / (0.26 * W), dy = (cy - 0.46 * H) / (0.33 * H);   // 1.0 = borda da elipse
+  const sizeRatio = (b.h * s) / (0.66 * H);
+  if (sizeRatio < 0.5) return ['arrows', 'Aproxime-se da câmera', 'warn'];
+  if (sizeRatio > 1.15) return ['arrows', 'Afaste-se um pouco', 'warn'];
+  if (Math.hypot(dx, dy) > 0.5) {
+    const dir = Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'para a esquerda' : 'para a direita') : (dy > 0 ? 'para cima' : 'para baixo');
+    return ['target', 'Centralize o rosto · mova ' + dir, 'warn'];
+  }
+  if (f.brightness != null) {
+    if (f.brightness < 60) return ['bulb', 'Pouca luz · vire-se para a luz', 'warn'];
+    if (f.brightness > 215) return ['sun', 'Luz demais no rosto', 'warn'];
+    if (res.frame_brightness - f.brightness > 55) return ['contrast', 'Contraluz · fique de frente para a luz', 'warn'];
+  }
+  if (f.sharpness != null && f.sharpness < 25) return ['hand', 'Fique parado · imagem tremida', 'warn'];
+  if (f.real != null && f.real < 0.4) return ['ban', 'Parece foto ou tela · use o rosto real', 'warn'];
+  if (f.det_score < 0.65) return ['glasses', 'Rosto pouco nítido · tire óculos escuros/boné', 'warn'];
+  if (f.yaw != null && n < POSES.length) {
+    if (n === 0 && Math.abs(f.yaw) > 0.3) return ['eye', 'Olhe de frente para a câmera', 'warn'];
+    if (n >= 1 && Math.abs(f.yaw) < 0.12) return [POSES[n].ico, POSES[n].guide, 'warn'];
+    if (n === 2 && shots[1].yaw != null && Math.sign(f.yaw) === Math.sign(shots[1].yaw)) return ['turnRight', 'Agora vire para o outro lado', 'warn'];
+  }
+  if (f.roll != null && Math.abs(f.roll) > 15) return ['level', 'Endireite a cabeça', 'warn'];
+  const what = n < POSES.length ? POSES[n].label.toLowerCase() : 'foto extra';
+  return ['check', autoOn && n < POSES.length ? `Ótimo · segure assim (${what})` : `Ótimo · pode capturar (${what})`, 'good'];
+}
+
+async function analyzeLoop() {
+  if (analyzing || capturing || !camStarted || $('step2').classList.contains('hidden') || video.readyState < 2) return;
+  if (UI.drawerOpen || document.hidden || document.querySelector('dialog.modal[open]')) return;
+  analyzing = true;
+  try {
+    const frame = await Cam.grab(video, 480, 0.8);
+    if (!frame) return;
+    const fd = new FormData(); fd.append('image', frame.blob, 'f.jpg');
+    const r = await fetch('/api/analyze', { method: 'POST', body: fd });
+    if (!r.ok) return;
+    const res = await r.json();
+    const [ico, text, state] = evaluate(res);
+    setHelper(ico, text, state);
+    const f = res.face;
+    $('metrics').textContent = f ? `det ${f.det_score} · luz ${f.brightness ?? '-'} · nitidez ${f.sharpness ?? '-'} · yaw ${f.yaw ?? '-'}${f.real != null ? ` · real ${f.real}` : ''} · ${res.ms} ms` : '';
+    if (f) lastYawSeen = f.yaw;
+    // captura automática: só nas 3 poses obrigatórias, depois de ~1,5 s com enquadramento bom
+    goodStreak = state === 'good' ? goodStreak + 1 : 0;
+    const autoActive = autoOn && shots.length < POSES.length && Date.now() > cooldownUntil;
+    setShutterProgress(autoActive ? Math.min(1, goodStreak / AUTO_STREAK) : 0);
+    if (autoActive && goodStreak >= AUTO_STREAK && !capturing) capture();
+  } catch (e) { /* silencioso: só é um helper */ }
+  finally { analyzing = false; }
+}
+setInterval(analyzeLoop, 500);
+
+function setShutterProgress(p) { $('capture').style.setProperty('--p', Math.round(p * 100) + '%'); }
+function syncAutoBtn() {
+  const active = autoOn && shots.length < POSES.length;
+  $('autoBtn').classList.toggle('on', autoOn);
+  $('autoBtn').innerHTML = `<span class="w-1.5 h-1.5 rounded-full ${active ? 'bg-white pulse' : autoOn ? 'bg-white/60' : 'bg-white/30'}"></span>AUTO`;
+  $('autoBtn').title = autoOn ? (active ? 'Captura automática ligada' : 'Captura automática ligada (fotos extras são manuais)') : 'Captura automática desligada';
+}
+$('autoBtn').onclick = () => {
+  autoOn = !autoOn; goodStreak = 0; setShutterProgress(0);
+  try { localStorage.setItem('fc_autocap', autoOn ? '1' : '0'); } catch (_) {}
+  syncAutoBtn(); UI.toast(autoOn ? 'Captura automática ligada' : 'Captura automática desligada');
+};
+
+async function capture() {
+  if (!person || capturing || shots.length >= MAX) return;
+  capturing = true; $('capture').disabled = true; goodStreak = 0; setShutterProgress(0);
+  $('flash').style.opacity = '.8'; setTimeout(() => $('flash').style.opacity = '0', 120);
+  try {
+    const frame = await Cam.grab(video, 960, 0.92);
+    const fd = new FormData(); fd.append('image', frame.blob, 'foto.jpg');
+    const res = await api(`/api/people/${person.id}/enroll`, { method: 'POST', body: fd });
+    if (res.ok) {
+      shots.push({ id: res.sample_id, yaw: lastYawSeen, url: URL.createObjectURL(frame.blob), mirror: video.classList.contains('mirror') });
+      const complete = shots.length === POSES.length || base + shots.length === MIN;
+      Sound.play(complete ? 'done' : 'ok');
+      if (navigator.vibrate) navigator.vibrate(complete ? [40, 60, 40] : 40);
+      UI.toast(res.warning ? `Foto salva, mas ${res.warning}` : `Foto ${shots.length} salva`);
+    } else {
+      Sound.play('error');
+      UI.toast('Não salva: ' + res.reason);
+    }
+  } catch (e) {
+    Sound.play('error');
+    UI.toast('Erro: ' + e.message);
+  } finally {
+    capturing = false; cooldownUntil = Date.now() + 1500;
+    renderShots();
+  }
+}
+$('capture').onclick = capture;
+
+// câmera e espelho
+function syncMirror() {
+  let on = true; try { on = localStorage.getItem('fc_mirror') !== '0'; } catch (_) {}
+  video.classList.toggle('mirror', on);
+  $('mirrorBtn').classList.toggle('on', on);
+}
+$('mirrorBtn').onclick = () => {
+  const on = !video.classList.contains('mirror');
+  try { localStorage.setItem('fc_mirror', on ? '1' : '0'); } catch (_) {}
+  syncMirror();
+};
+$('camBtn').onclick = () => Cam.openPicker({ onPick: id => { camId = id; startCam(); } });
+
+async function startCam() {
+  syncMirror();
+  try {
+    await Cam.start(video, camId || undefined);
+    camStarted = true;
+    Cam.hideError($('camArea'));
+    setHelper('face', 'Encaixe o rosto na moldura', '');
+  } catch (e) {
+    camStarted = false;
+    // sem câmera: some moldura, poses, disparador e dicas; fica só o painel explicando o que fazer
+    Cam.showError($('camArea'), e, {
+      onRetry: startCam,
+      onPick: () => Cam.openPicker({ onPick: id => { camId = id; startCam(); } }),
+    });
+  }
+  $('tipsRow').classList.toggle('hidden', !camStarted);
+  $('thumbs').parentElement.classList.toggle('hidden', !camStarted && shots.length === 0);
+  $('metrics').textContent = '';
+  renderShots();
+}
+
+$('back1').onclick = () => { history.replaceState(null, '', '/cadastro'); goStep(1); loadPeople(); };
+$('finish').onclick = () => {
+  const total = base + shots.length;
+  $('doneText').innerHTML = `<b class="text-slate-200">${esc(person.name)}</b> tem agora <b class="text-slate-200">${total}</b> amostra(s) facial(is)` +
+    (base ? `, ${shots.length} adicionada(s) agora.` : '.');
+  $('toAdmin').href = '/admin#pessoa=' + person.id;
+  goStep(3);
+  loadEventsFor(person.id);
+};
+
+// ================= passo 3: eventos =================
+async function loadEventsFor(pid) {
+  $('evList').innerHTML = '<div class="skeleton h-16"></div><div class="skeleton h-16"></div>';
+  try {
+    const [up, p] = await Promise.all([api('/api/events?scope=upcoming&limit=100'), api('/api/people/' + pid)]);
+    const listed = new Set(p.events.map(e => e.id));
+    const t = todayISO();
+    $('evList').innerHTML = up.items.map(e => {
+      const [, m, d] = e.event_date.split('-');
+      const right = e.access === 'all'
+        ? '<span class="chip shrink-0 text-slate-300">aberto a todos</span>'
+        : `<input type="checkbox" role="switch" class="switch" data-ev="${e.id}" ${listed.has(e.id) ? 'checked' : ''} aria-label="Incluir em ${esc(e.name)}">`;
+      return `<label class="row-item cursor-pointer">
+        <div class="date-badge ${e.event_date === t ? 'today' : ''} !w-12"><div class="d">${d}</div><div class="m">${MONTHS[+m - 1]}</div></div>
+        <div class="min-w-0 flex-1"><div class="font-semibold leading-snug line-clamp-2">${esc(e.name)}</div>
+          <div class="text-xs text-slate-400 mt-0.5 capitalize">${weekday(e.event_date)} · ${e.access === 'list' ? `<span data-count="${e.id}">${e.participants}</span> na lista` : 'qualquer cadastrado'}</div></div>
+        ${right}</label>`;
+    }).join('') || `<div class="empty !py-6"><div class="ic">${icon('calendar', 26)}</div>
+      <div>Nenhum evento próximo.</div><a href="/admin" class="btn btn-sm mt-1">Criar evento no admin</a></div>`;
+  } catch (err) {
+    $('evList').innerHTML = `<p class="text-sm text-red-300">Erro ao carregar eventos: ${esc(err.message)}</p>`;
+  }
+}
+$('evList').onchange = async e => {
+  const sw = e.target.closest('[data-ev]'); if (!sw) return;
+  const id = sw.dataset.ev, on = sw.checked;
+  sw.disabled = true;
+  try {
+    await api(`/api/events/${id}/participants/${person.id}`, { method: on ? 'POST' : 'DELETE' });
+    const c = document.querySelector(`[data-count="${id}"]`); if (c) c.textContent = +c.textContent + (on ? 1 : -1);
+    UI.toast(on ? 'Incluído no evento' : 'Removido do evento');
+  } catch (err) { sw.checked = !on; UI.toast('Erro: ' + err.message); }
+  finally { sw.disabled = false; }
+};
+$('another').onclick = () => { person = null; history.replaceState(null, '', '/cadastro'); goStep(1); setMode('new'); loadPeople(); };
+
+// ================= início =================
+syncAutoBtn();
+(async () => {
+  await loadPeople().catch(() => {});
+  // /cadastro?person=ID → vai direto para as fotos daquela pessoa (vindo do admin)
+  const pid = new URLSearchParams(location.search).get('person');
+  if (!pid) { setTimeout(() => $('name').focus(), 80); return; }
+  try {
+    const p = await api('/api/people/' + encodeURIComponent(pid));
+    beginPhotos({ id: p.id, name: p.name, code: p.code, samples: p.samples.length });
+  } catch (e) { UI.toast('Pessoa não encontrada'); history.replaceState(null, '', '/cadastro'); }
+})();
+</script>
+</body>
+</html>

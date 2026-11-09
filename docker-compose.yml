@@ -1,0 +1,22 @@
+version: "3.8"
+# Valores entre ${...} vêm do arquivo .env (mesma pasta). Ver .env.example.
+services:
+  facecheck-api:
+    build: .
+    image: facecheck-api:local
+    container_name: facecheck_api
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "${APP_PORT:-8090}:8000"        # acesso local: http://localhost:8090
+      - "${PUBLIC_PORT:-8000}:8000"     # porta extra opcional (ex.: túnel ou proxy reverso)
+    volumes:
+      - ./app:/app/app:ro               # dev: páginas/estáticos sem rebuild
+    networks:
+      - db_net
+
+networks:
+  # rede Docker já existente onde o Postgres (com pgvector) está acessível
+  db_net:
+    external: true
+    name: ${DOCKER_NETWORK:-facecheck_net}

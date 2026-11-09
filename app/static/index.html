@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a0a0a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FaceCheck">
+<title>FaceCheck · Check-in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="/static/theme.js?v=10"></script>
+<link rel="stylesheet" href="/static/style.css?v=17">
+</head>
+<body class="h-dvh flex flex-col overflow-hidden">
+
+<main id="camBox" class="standby relative flex-1 bg-black overflow-hidden">
+  <video id="video" class="absolute inset-0 w-full h-full object-cover mirror" autoplay muted playsinline></video>
+  <canvas id="overlay" class="cam-hide absolute inset-0 w-full h-full"></canvas>
+
+  <!-- seta grande do desafio de prova de vida -->
+  <div id="chalArrow" class="chal-arrow hidden" aria-hidden="true">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg>
+  </div>
+  <!-- barra de tempo do desafio -->
+  <div id="chalBar" class="absolute top-0 inset-x-0 h-1 z-20 hidden"><div class="h-full bg-gradient-to-r from-indigo-500 to-indigo-700 transition-[width] duration-200 ease-linear" id="chalBarFill" style="width:100%"></div></div>
+
+  <!-- topo flutuante -->
+  <div class="absolute top-0 inset-x-0 p-3 sm:p-4 flex items-center gap-2 z-10 pointer-events-none">
+    <button class="btn btn-icon fs-only pointer-events-auto bg-slate-950/70 backdrop-blur" data-menu aria-label="Menu">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+    </button>
+    <span id="eventChip" class="chip chip-info pointer-events-auto"><span class="w-2 h-2 rounded-full bg-indigo-300 pulse"></span><span id="eventName">Sem evento</span></span>
+    <div class="flex-1"></div>
+    <span id="liveChip" class="cam-hide chip hidden sm:inline-flex"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>ao vivo</span>
+    <button id="stopBtn" class="hidden btn btn-sm pointer-events-auto bg-slate-950/70 backdrop-blur" aria-label="Parar leitura"></button>
+    <button class="btn btn-icon fs-only pointer-events-auto bg-slate-950/70 backdrop-blur" data-fs aria-label="Sair da tela cheia">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3M21 8h-3a2 2 0 0 1-2-2V3M3 16h3a2 2 0 0 1 2 2v3M16 21v-3a2 2 0 0 1 2-2h3"/></svg>
+    </button>
+  </div>
+
+  <!-- banner inferior -->
+  <div class="cam-hide absolute bottom-0 inset-x-0 p-3 sm:p-6 z-10" style="padding-bottom: max(.75rem, env(safe-area-inset-bottom))">
+    <div class="mx-auto max-w-2xl">
+      <div id="banner" class="banner">
+        <div class="ico" id="bannerIco"></div>
+        <div class="min-w-0">
+          <div id="bannerText" class="text-xl sm:text-3xl font-bold leading-tight truncate">Iniciando câmera…</div>
+          <div id="bannerSub" class="text-sm opacity-80 truncate"></div>
+        </div>
+      </div>
+      <div id="stats" class="text-center text-[11px] text-white/45 mt-2 font-mono"></div>
+    </div>
+  </div>
+
+  <!-- tela de espera: confere evento e câmera; a leitura só começa ao tocar em Iniciar -->
+  <div id="startPanel" class="absolute inset-0 z-30 flex items-center justify-center p-4 overflow-y-auto"
+       style="background: radial-gradient(circle at 50% 35%, #1c1c1c, #0a0a0a 70%)">
+    <div class="card w-full max-w-sm p-5 sm:p-6 flex flex-col gap-5 pop">
+      <div class="flex flex-col items-center text-center gap-3">
+        <div class="w-16 h-16 rounded-2xl grid place-items-center bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-500/30" id="spIcon"></div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">Check-in por reconhecimento</h1>
+          <p class="text-sm text-slate-400 mt-1">Confira o evento e a câmera e toque em Iniciar.</p>
+        </div>
+      </div>
+      <div class="flex flex-col gap-3">
+        <div><span class="label">Evento</span>
+          <button type="button" class="picker" id="spEvent"><span class="min-w-0 flex-1 text-left" data-v>—</span></button></div>
+        <div><span class="label">Câmera</span>
+          <button type="button" class="picker" id="spCamera"><span class="min-w-0 flex-1 text-left" data-v>—</span></button></div>
+      </div>
+      <button id="startBtn" class="btn btn-primary btn-lg w-full"></button>
+      <p class="text-[11px] text-slate-500 text-center -mt-2" id="spHint"></p>
+    </div>
+  </div>
+</main>
+
+<script src="/static/cam.js?v=16"></script>
+<script src="/static/ui.js?v=17"></script>
+<script>
+UI.mount({
+  active: 'checkin', title: 'Check-in',
+  controls: `
+    <div><span class="label">Evento</span>
+      <button type="button" class="picker" id="eventPick"><span class="min-w-0 flex-1 text-left" data-v>—</span>${icon('chevron', 18)}</button>
+      <select id="event" class="hidden" aria-hidden="true" tabindex="-1"></select></div>
+    <div><span class="label">Câmera</span>
+      <button type="button" class="picker" id="cameraPick"><span class="min-w-0 flex-1 text-left" data-v>—</span>${icon('chevron', 18)}</button>
+      <select id="camera" class="hidden" aria-hidden="true" tabindex="-1"></select></div>
+    <div>
+      <div class="flex items-baseline justify-between"><label class="label" for="interval">Intervalo entre leituras</label>
+        <span class="text-sm font-semibold text-white" id="intervalVal"></span></div>
+      <input id="interval" type="range" min="200" max="2000" step="100" class="w-full accent-indigo-500">
+      <div class="flex justify-between text-[11px] text-slate-500 mt-1"><span>mais rápido</span><span>menos carga no servidor</span></div>
+    </div>
+    <label class="flex items-center justify-between gap-3 cursor-pointer">
+      <span><span class="text-sm text-slate-200 block">Espelhar imagem</span>
+        <span class="text-xs text-slate-500">Desligue se usar a câmera traseira</span></span>
+      <input id="mirror" type="checkbox" role="switch" class="switch">
+    </label>`
+});
+
+const video = document.getElementById('video');
+const overlay = document.getElementById('overlay');
+const banner = document.getElementById('banner');
+const bannerText = document.getElementById('bannerText');
+const bannerSub = document.getElementById('bannerSub');
+const bannerIco = document.getElementById('bannerIco');
+const stats = document.getElementById('stats');
+const eventSel = document.getElementById('event');
+const camSel = document.getElementById('camera');
+const mirrorCb = document.getElementById('mirror');
+// intervalo entre leituras: configurável no menu (salvo neste aparelho)
+const intervalIn = document.getElementById('interval'), intervalVal = document.getElementById('intervalVal');
+let INTERVAL_MS = 600;
+try { INTERVAL_MS = Math.min(2000, Math.max(200, +localStorage.getItem('fc_interval') || 600)); } catch (_) {}
+const showInterval = () => { intervalIn.value = INTERVAL_MS; intervalVal.textContent = (INTERVAL_MS / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1 }) + ' s'; };
+intervalIn.oninput = () => { INTERVAL_MS = +intervalIn.value; showInterval(); try { localStorage.setItem('fc_interval', INTERVAL_MS); } catch (_) {} };
+showInterval();
+const FAST_MS = 180;                               // durante o desafio de prova de vida
+let paused = false;
+let busy = false, unknownStreak = 0, holdUntil = 0, fastUntil = 0, timeoutUntil = 0;
+const chalArrow = document.getElementById('chalArrow');
+const chalBar = document.getElementById('chalBar'), chalBarFill = document.getElementById('chalBarFill');
+
+const ICO = { idle: 'user', ok: 'check', info: 'check', warn: 'alert', bad: 'alert', challenge: 'arrows' };
+function setBanner(text, cls = '', sub = '', holdMs = 0, ico = null) {
+  if (Date.now() < holdUntil && !holdMs) return;     // não sobrescreve um aviso "segurado"
+  bannerText.textContent = text; bannerSub.textContent = sub;
+  bannerIco.innerHTML = icon(ico || ICO[cls || 'idle'], 28, 2.4);
+  banner.className = 'banner' + (cls ? ' ' + cls : '');
+  if (holdMs) { holdUntil = Date.now() + holdMs; banner.classList.add('pop'); setTimeout(() => banner.classList.remove('pop'), 300); }
+}
+
+// Desafio de prova de vida. "left"/"right" = esquerda/direita DA PESSOA, que está de frente
+// para a tela: a seta aponta para o mesmo lado na tela.
+const CHAL = {
+  front: { text: 'olhe de frente', ico: 'eye', side: null },
+  left:  { text: 'vire o rosto para a esquerda', ico: 'arrowLeft', side: 'left' },
+  right: { text: 'vire o rosto para a direita', ico: 'arrowRight', side: 'right' },
+};
+function showChallenge(f) {
+  const lv = f.liveness, c = CHAL[lv.action] || CHAL.front;
+  const first = f.match.name.split(' ')[0];
+  setBanner(`${first}, ${c.text}`, 'challenge', `Prova de vida · passo ${lv.step + 1} de ${lv.steps}`, 0, c.ico);
+  chalArrow.classList.toggle('hidden', !c.side);
+  chalArrow.classList.toggle('right', c.side === 'right');
+  chalBar.classList.remove('hidden');
+  chalBarFill.style.width = Math.max(0, Math.min(100, lv.remaining / LIVENESS_TIMEOUT * 100)) + '%';
+}
+function hideChallenge() { chalArrow.classList.add('hidden'); chalBar.classList.add('hidden'); }
+let LIVENESS_TIMEOUT = 8;
+fetch('/api/health').then(r => r.json()).then(h => { if (h.liveness_timeout) LIVENESS_TIMEOUT = h.liveness_timeout; }).catch(() => {});
+
+let EVENTS = { up: [], past: [] };
+async function loadEvents() {
+  const [up, past] = await Promise.all([
+    api('/api/events?scope=upcoming&limit=100'), api('/api/events?scope=past&limit=30')]);
+  EVENTS = { up: up.items, past: past.items };
+  const evs = [...up.items, ...past.items];
+  const opt = e => `<option value="${e.id}">${esc(e.name)} · ${fmtDate(e.event_date)}${e.access === 'list' ? ` · ${e.participants} na lista` : ''}</option>`;
+  eventSel.innerHTML = '<option value="">— selecione —</option>'
+    + (up.items.length ? `<optgroup label="Hoje e próximos">${up.items.map(opt).join('')}</optgroup>` : '')
+    + (past.items.length ? `<optgroup label="Anteriores">${past.items.map(opt).join('')}</optgroup>` : '');
+  let saved = null; try { saved = localStorage.getItem('fc_event'); } catch (_) {}
+  if (saved && evs.some(e => String(e.id) === saved)) eventSel.value = saved;
+  else { const today = up.items.find(e => e.event_date === todayISO()); if (today) eventSel.value = today.id; }
+  const sync = () => {
+    try { localStorage.setItem('fc_event', eventSel.value); } catch (_) {}
+    const ev = evs.find(e => String(e.id) === eventSel.value);
+    document.getElementById('eventName').textContent = ev ? ev.name : 'Sem evento';
+    const html = ev
+      ? `<span class="block truncate font-semibold text-white">${esc(ev.name)}</span><span class="block text-xs text-slate-400">${fmtDate(ev.event_date)}${ev.access === 'list' ? ` · ${ev.participants} na lista` : ' · aberto a todos'}</span>`
+      : '<span class="text-slate-400">Escolher evento</span>';
+    document.querySelector('#eventPick [data-v]').innerHTML = html;
+    document.querySelector('#spEvent [data-v]').innerHTML = html;
+    syncStartBtn();
+  };
+  eventSel.onchange = () => { sync(); UI.close(); };
+  sync();
+}
+
+// ---- seletores em modal (evento e câmera) ----
+function dateBadgeMini(iso) {
+  const [, m, d] = iso.split('-'), t = todayISO();
+  return `<div class="date-badge ${iso === t ? 'today' : iso < t ? 'past' : ''} !w-12"><div class="d">${d}</div><div class="m">${MONTHS[+m - 1]}</div></div>`;
+}
+function openEventPicker() {
+  let q = '';
+  const dlg = UI.dialog({
+    size: 'md',
+    title: '<div class="font-bold text-lg">Escolher evento</div>',
+    body: `<div class="p-4 flex flex-col gap-3">
+      <div class="search">${icon('search', 18)}<input class="input" placeholder="Buscar evento" type="search" data-q autocomplete="off"></div>
+      <div class="flex flex-col gap-2" data-list></div></div>`,
+  });
+  const render = () => {
+    const nq = String(q).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const match = e => !nq || e.name.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().includes(nq);
+    const row = e => {
+      const on = String(e.id) === eventSel.value;
+      return `<button class="row-item ${on ? '!border-indigo-500/60 !bg-indigo-500/10' : ''}" data-id="${e.id}">
+        ${dateBadgeMini(e.event_date)}
+        <div class="min-w-0 flex-1"><div class="font-semibold leading-snug line-clamp-2">${esc(e.name)}</div>
+          <div class="text-xs text-slate-400 mt-0.5">${e.access === 'list' ? `${e.participants} na lista` : 'aberto a todos'} · ${e.checkins} presente(s)</div></div>
+        ${on ? `<span class="text-indigo-400 shrink-0">${icon('check', 22, 2.6)}</span>` : ''}
+      </button>`;
+    };
+    const sec = (title, items) => items.length ? `<div class="label !mb-0 mt-1">${title}</div>${items.map(row).join('')}` : '';
+    const up = EVENTS.up.filter(match), past = EVENTS.past.filter(match);
+    dlg.$('[data-list]').innerHTML = (sec('Hoje e próximos', up) + sec('Anteriores', past))
+      || `<div class="empty"><div class="ic">${icon('calendar', 26)}</div><div>${q ? 'Nenhum evento encontrado.' : 'Nenhum evento cadastrado. Crie no admin.'}</div></div>`;
+  };
+  dlg.$('[data-q]').oninput = e => { q = e.target.value.trim(); render(); };
+  dlg.$('[data-list]').onclick = e => {
+    const b = e.target.closest('[data-id]'); if (!b) return;
+    eventSel.value = b.dataset.id; eventSel.dispatchEvent(new Event('change'));
+    dlg.close();
+  };
+  render();
+}
+async function openCameraPicker() {
+  // antes da primeira permissão o navegador não informa nome nem id das câmeras: pede a permissão rapidinho
+  const cams = await Cam.list().catch(() => []);
+  if (!cams.length || cams.every(c => !c.label)) {
+    try { const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false }); s.getTracks().forEach(t => t.stop()); } catch (_) {}
+    await Cam.fillSelect(camSel, 'fc_camera').catch(() => {});
+  }
+  Cam.openPicker({ onPick: (id, label) => {
+    try { localStorage.setItem('fc_camera_label', label || ''); } catch (_) {}
+    camSel.value = id; camSel.dispatchEvent(new Event('change'));
+  } });
+}
+function syncCameraPick() {
+  const opt = camSel.selectedOptions[0];
+  let saved = ''; try { saved = localStorage.getItem('fc_camera_label') || ''; } catch (_) {}
+  if (saved) saved = Cam.prettyLabels([{ label: saved }])[0];
+  const label = (opt && opt.textContent && !/^Câmera \d+$/.test(opt.textContent)) ? opt.textContent : saved;
+  const html = label ? `<span class="block truncate font-semibold text-white">${esc(label)}</span>`
+    : '<span class="block font-semibold text-white">Câmera padrão</span><span class="block text-xs text-slate-400">frontal do aparelho</span>';
+  document.querySelector('#cameraPick [data-v]').innerHTML = html;
+  document.querySelector('#spCamera [data-v]').innerHTML = html;
+}
+
+// ---- iniciar / parar ----
+let running = false;
+const camBox = document.getElementById('camBox');
+const startPanel = document.getElementById('startPanel');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+document.getElementById('spIcon').innerHTML = icon('scan', 32, 2);
+stopBtn.innerHTML = `${icon('pause', 16, 2.6)} Parar`;
+function syncStartBtn() {
+  const has = !!eventSel.value;
+  startBtn.innerHTML = has ? `<svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l13-7.5z"/></svg> Iniciar` : 'Escolha um evento';
+  document.getElementById('spHint').textContent = has
+    ? 'A câmera liga ao iniciar. Use Parar no topo para voltar aqui.'
+    : 'Sem evento escolhido não dá para registrar presença.';
+}
+async function startReading() {
+  if (!eventSel.value) return openEventPicker();
+  running = true; paused = false; holdUntil = 0; unknownStreak = 0;
+  camBox.classList.remove('standby');
+  document.body.classList.add('kiosk-running');
+  startPanel.classList.add('hidden');
+  stopBtn.classList.remove('hidden');
+  setBanner('Iniciando câmera…', '', '', 0, 'loader');
+  await startCam();
+  if (Cam.stream) { await Cam.fillSelect(camSel, 'fc_camera').catch(() => {}); syncCameraPick(); }
+}
+function stopReading() {
+  running = false;
+  Cam.stop(); video.srcObject = null;
+  Cam.hideError(camBox);
+  overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+  hideChallenge(); stats.textContent = '';
+  camBox.classList.add('standby');
+  document.body.classList.remove('kiosk-running');
+  startPanel.classList.remove('hidden');
+  stopBtn.classList.add('hidden');
+}
+startBtn.onclick = startReading;
+stopBtn.onclick = stopReading;
+document.getElementById('spEvent').onclick = openEventPicker;
+document.getElementById('spCamera').onclick = openCameraPicker;
+document.getElementById('eventPick').onclick = openEventPicker;
+document.getElementById('cameraPick').onclick = openCameraPicker;
+document.getElementById('eventChip').style.cursor = 'pointer';
+document.getElementById('eventChip').onclick = openEventPicker;
+
+function drawBoxes(res, frameW, frameH) {
+  const W = overlay.width = overlay.clientWidth, H = overlay.height = overlay.clientHeight;
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+  const s = Math.max(W / frameW, H / frameH);           // object-fit: cover
+  const ox = (W - frameW * s) / 2, oy = (H - frameH * s) / 2;
+  const mirrored = video.classList.contains('mirror');
+  for (const f of res.faces) {
+    const b = f.bbox;
+    let x = ox + b.x * s, y = oy + b.y * s, w = b.w * s, h = b.h * s;
+    if (mirrored) x = W - x - w;
+    const inChal = f.liveness && f.liveness.status !== 'passed';
+    const isSpoof = f.liveness && f.liveness.status === 'spoof';
+    const color = !f.match ? '#f59e0b' : (f.denied || isSpoof) ? '#ef4444' : f.checkin && f.checkin.status === 'new' ? '#22c55e' : inChal ? '#ffffff' : '#d4d4d4';
+    const r = Math.min(18, w * .15), L = Math.min(w, h) * .28;      // cantos arredondados estilo "scanner"
+    ctx.lineWidth = 3; ctx.strokeStyle = color; ctx.lineCap = 'round';
+    const corner = (cx, cy, dx, dy) => { ctx.beginPath(); ctx.moveTo(cx + dx * L, cy); ctx.lineTo(cx + dx * r, cy); ctx.quadraticCurveTo(cx, cy, cx, cy + dy * r); ctx.lineTo(cx, cy + dy * L); ctx.stroke(); };
+    corner(x, y, 1, 1); corner(x + w, y, -1, 1); corner(x, y + h, 1, -1); corner(x + w, y + h, -1, -1);
+    const label = !f.match ? `desconhecido  ${f.best_score != null ? f.best_score.toFixed(2) : ''}`
+      : f.denied ? `${f.match.name} · fora da lista`
+      : inChal ? `${f.match.name} · verificando` : `${f.match.name}  ${f.match.score.toFixed(2)}`;
+    ctx.font = '600 14px Inter, system-ui';
+    const tw = ctx.measureText(label).width + 16;
+    ctx.fillStyle = color; ctx.beginPath(); ctx.roundRect(x, y - 30, tw, 24, 8); ctx.fill();
+    ctx.fillStyle = ['#ffffff', '#d4d4d4', '#f59e0b'].includes(color) ? '#0a0a0a' : '#fff'; ctx.fillText(label, x + 8, y - 13);
+  }
+}
+
+async function tick() {
+  if (!running) return;                              // só lê depois de tocar em Iniciar
+  // pausa com o menu aberto, um modal aberto ou a aba em segundo plano
+  const shouldPause = UI.drawerOpen || document.hidden || !!document.querySelector('dialog.modal[open]');
+  if (shouldPause !== paused) {
+    paused = shouldPause;
+    if (paused) {
+      overlay.getContext('2d').clearRect(0, 0, overlay.width, overlay.height);
+      hideChallenge(); holdUntil = 0;
+      setBanner('Leitura pausada', '', 'Feche o menu para voltar a registrar presença', 0, 'pause');
+      stats.textContent = '';
+    } else if (!Cam.stream) {
+      // o painel de câmera indisponível já está na tela
+    } else {
+      setBanner('Aproxime-se da câmera', '', 'Olhe para a tela para registrar presença');
+    }
+  }
+  if (paused || busy || video.readyState < 2) return;
+  const eventId = eventSel.value;
+  if (!eventId) { setBanner('Selecione um evento', '', 'Abra o menu e escolha o evento do dia'); return; }
+  busy = true;
+  try {
+    const frame = await Cam.grab(video, 640);
+    if (!frame) return;
+    const fd = new FormData();
+    fd.append('image', frame.blob, 'frame.jpg');
+    const t0 = performance.now();
+    const r = await fetch(`/api/recognize?event_id=${eventId}`, { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const res = await r.json();
+    const rtt = Math.round(performance.now() - t0);
+    drawBoxes(res, frame.width, frame.height);
+    const lvReal = res.faces.map(f => f.liveness && f.liveness.real).find(v => v != null);
+    stats.textContent = `${res.faces.length} rosto(s) · servidor ${res.ms} ms · total ${rtt} ms · limiar ${res.threshold}`
+      + (lvReal != null ? ` · real ${lvReal.toFixed(2)}` : '');
+
+    const lv = s => res.faces.filter(f => f.liveness && f.liveness.status === s);
+    const chal = lv('challenge'), tout = lv('timeout'), checking = lv('checking'), spoof = lv('spoof');
+    if (chal.length || tout.length || checking.length) fastUntil = Date.now() + 1500; else hideChallenge();
+
+    if (res.faces.length === 0) {
+      unknownStreak = 0;
+      setBanner('Aproxime-se da câmera', '', 'Olhe para a tela para registrar presença');
+    } else {
+      const news = res.faces.filter(f => f.checkin && f.checkin.status === 'new');
+      const reps = res.faces.filter(f => f.checkin && f.checkin.status === 'repeat');
+      const unk = res.faces.filter(f => !f.match);
+      const denied = res.faces.filter(f => f.denied);
+      if (news.length) {
+        unknownStreak = 0; hideChallenge();
+        setBanner(news.map(f => f.match.name).join(', '), 'ok', 'Presença registrada · ' + fmtTime(news[0].checkin.at), 3000);
+      } else if (tout.length) {
+        unknownStreak = 0; hideChallenge(); timeoutUntil = Date.now() + 1800;
+        setBanner('Tempo esgotado', 'warn', 'Vamos de novo: siga as setas na tela', 1800);
+      } else if (chal.length) {
+        unknownStreak = 0;
+        if (Date.now() > timeoutUntil) showChallenge(chal[0]);
+      } else if (spoof.length) {
+        unknownStreak = 0; hideChallenge();
+        setBanner('Use o seu rosto', 'bad', 'Foto ou tela não vale · olhe direto para a câmera', 1500, 'ban');
+      } else if (checking.length) {
+        unknownStreak = 0; hideChallenge();
+        setBanner(`${checking[0].match.name.split(' ')[0]}, olhe para a câmera`, 'challenge', 'Verificando…', 0, 'eye');
+      } else if (reps.length) {
+        unknownStreak = 0;
+        const f = reps[0];
+        setBanner(f.match.name, 'info', 'Já registrado às ' + fmtTime(f.checkin.at));
+      } else if (denied.length) {
+        unknownStreak = 0; hideChallenge();
+        setBanner(`${denied[0].match.name} não está na lista`, 'bad', 'Este evento é só para participantes liberados · procure a organização', 2500, 'ban');
+      } else if (unk.length) {
+        unknownStreak++;
+        if (unknownStreak >= 3) setBanner('Rosto não reconhecido', 'warn', 'Procure a recepção ou faça o cadastro');
+        else setBanner('Reconhecendo…', '', '');
+      }
+    }
+  } catch (e) {
+    setBanner('Erro de conexão', 'bad', e.message);
+  } finally {
+    busy = false;
+  }
+}
+
+async function startCam() {
+  const box = document.getElementById('camBox');
+  try {
+    await Cam.start(video, camSel.value || undefined);
+    Cam.hideError(box);
+    setBanner('Aproxime-se da câmera', '', 'Olhe para a tela para registrar presença');
+  } catch (e) {
+    // sem câmera: o banner de leitura e as caixas somem; fica o painel com a causa e o que fazer
+    hideChallenge();
+    Cam.showError(box, e, { onRetry: startCam, onPick: openCameraPicker });
+  }
+}
+
+(async () => {
+  mirrorCb.checked = localStorage.getItem('fc_mirror') !== '0';
+  video.classList.toggle('mirror', mirrorCb.checked);
+  mirrorCb.onchange = () => { localStorage.setItem('fc_mirror', mirrorCb.checked ? '1' : '0'); video.classList.toggle('mirror', mirrorCb.checked); };
+  await loadEvents();
+  await Cam.fillSelect(camSel, 'fc_camera').catch(() => {});   // câmera só liga ao tocar em Iniciar
+  syncCameraPick();
+  camSel.addEventListener('change', () => { if (running) startCam(); syncCameraPick(); UI.close(); });
+  const loop = async () => {
+    await tick();
+    setTimeout(loop, paused ? 250 : Date.now() < fastUntil ? Math.min(FAST_MS, INTERVAL_MS) : INTERVAL_MS);
+  };
+  loop();
+})();
+</script>
+</body>
+</html>
